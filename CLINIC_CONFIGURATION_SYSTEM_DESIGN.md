@@ -4,6 +4,17 @@
 
 ---
 
+## 💡 مبدأ التصميم الأساسي (Core Design Principle)
+> **"Configuration is Data, not Code" (التهيئة بيانات وليست كوداً)**
+> يعتمد هذا النظام على مبدأ الفصل التام بين الكود البرمجي وبين البيانات التعريفية للعيادة. جميع المعايير والمدخلات التالية يجب أن تأتي حياً من قاعدة البيانات أو ملفات التهيئة المخصصة للعيادة، ويُحظر تماماً تخزينها كقيم ثابتة (Hardcoded) في الكود:
+> * الأسعار الرسمية للخدمات الطبية.
+> * أسماء الخدمات الطبية المتاحة بالكتالوج.
+> * أسماء الأطباء وتخصصاتهم.
+> * رسائل الترحيب والموجه الخاص (AI Prompts).
+> * الفروع وساعات العمل وتفاصيل التواصل.
+
+---
+
 ## 1. نموذج المجال (Domain Model)
 
 تتألف العيادة من مجموعة من المكونات المترابطة التي تدير الكتالوج الطبي للعيادة الواحدة (Tenant):
@@ -332,19 +343,32 @@ interface UpsertDoctorDto {
 تفعيلاً لمراجعة التصميم الهندسي للمنتج كمنصة SaaS آمنة، سنعتمد الآليات المعمارية التالية:
 
 ### أ. تشفير معطيات القنوات الحساسة (Meta Access Token Encryption at Rest)
-* **المشكلة:** حفظ رموز الوصول (Access Tokens) كنصوص واضحة (Plain text) في قاعدة البيانات يعرض المنصة لمخاطر أمنية عالية في حال تسرب البيانات.
-* **الحل:** تشفير حقل `whatsappToken` تشفيراً متماثلاً (Symmetric Encryption) باستخدام خوارزمية `aes-256-cbc` عبر وحدة `crypto` الأساسية في Node.js.
+* **المشكلة:** حفظ رموز الوصول (Access Tokens) كنصوص واضحة (Plain text) يعرض المنصة للمخاطر في حال تسرب قاعدة البيانات، واستخدام CBC لا يحمي سلامة البيانات (Integrity) والتحقق من صحتها (Authentication).
+* **الحل:** تشفير حقل `whatsappToken` تشفيراً متماثلاً باستخدام خوارزمية **`aes-256-gcm`** التي توفر:
+  1. تشفير تام للبيانات (Confidentiality).
+  2. مصادقة النص المشفر (Authenticated Encryption).
+  3. حماية ضد التلاعب بالـ Token في قاعدة البيانات (Integrity via Authentication Tag).
 * **التنفيذ:** 
-  - إعداد متغير بيئة `ENCRYPTION_KEY` بطول 32 بايت و `ENCRYPTION_IV` بطول 16 بايت.
-  - إنشاء وحدة مساعدة `src/lib/encryption.ts` تحتوي على دالتين: `encrypt(text: string): string` و `decrypt(encrypted: string): string`.
-  - في الـ Service الخاص بـ Clinic Config، يتم استدعاء `encrypt` قبل حفظ الـ Token، واستدعاء `decrypt` فقط عند سحب الـ Token لاستدعاء Meta Cloud API.
+  - إعداد متغير بيئة `ENCRYPTION_KEY` بطول 32 بايت (256-bit).
+  - استخدام وحدة `crypto` الأساسية في Node.js لتوليد `iv` عشوائي بطول 12 بايت لكل عملية تشفير.
+  - دالة `encrypt(text: string): { encryptedData: string, iv: string, authTag: string }` ترجع النص المشفر ومعه الـ `iv` والـ `authTag` ليتم حفظهم معاً في حقول قاعدة البيانات.
+  - دالة `decrypt(encryptedData: string, iv: string, authTag: string): string` تستخدم لفك التشفير بعد التحقق من سلامة البيانات عبر الـ `authTag`.
 
-### ب. هيكلية الكتالوج المبنية على الأحداث (Event-Driven Catalog & RAG Sync)
-* **المشكلة:** تحديث الكتالوج (الخدمات، الأطباء، الفروع، الأسئلة الشائعة) دون مزامنة قد يؤدي إلى بقاء ذاكرة المساعد الذكي وسياق الـ RAG والـ Cache في حالة قديمة ومخالفة للحقيقة الفعلية بقاعدة البيانات.
-* **الحل:** تفعيل معمارية مبنية على الأحداث (Event-Driven Architecture) داخل المنصة.
-* **خطوات تدفق الأحداث (Domain Event Flow):**
-  1. عند قيام المسؤول بأي عملية (CRUD للخدمات/الأطباء/الفروع/قاعدة المعرفة)، يتم إرسال الحدث المناسب (مثال: `CatalogUpdatedEvent` أو `KnowledgeBaseUpdatedEvent`).
-  2. يستقبل مستمع الأحداث (Event Listener) في الخلفية هذا الحدث ويقوم بـ:
-     - **RAG Refresher:** تحديث وتوليد الـ Vector Embeddings للمستندات المعدلة ورفعها للـ Vector Store.
-     - **Cache Invalidation:** إفراغ وإلغاء صلاحية الـ Cache النشط للمحادثات الجارية لمنع تقديم خيارات قديمة للعملاء.
-     - **Dynamic Prompt Rebuilder:** إعادة صياغة الموجه الديناميكي ليتضمن الكتالوج المحدث فوراً.
+### ب. هيكلية الكتالوج المبنية على ناقل الأحداث المجالي (Domain Event Bus Architecture)
+* **المشكلة:** ربط عمليات الـ CRUD للكتالوج بالتحديثات الجانبية (RAG, Embeddings, Cache) بشكل مباشر ينتج عنه كود معقد وقابل للتخريب (Tight Coupling) ويصعب توسيع النظام مستقبلاً لتوزيع المهام على Microservices أو الخلفيات المنفصلة.
+* **الحل:** إدخال طبقة تجريد **`Domain Event Bus`** لعزل منطق العمل عن مهام الخلفية.
+* **التنفيذ:**
+  - إنشاء فئة مجردة للحدث `DomainEvent` وفئة ناقل الأحداث `DomainEventBus` في `src/lib/events.ts`.
+  - عند تعديل الكتالوج أو قاعدة المعرفة، يقوم موديول الإعدادات بنشر حدث مجالي بشكل صريح:
+    ```typescript
+    DomainEventBus.publish(new ClinicCatalogUpdatedEvent(clinicId, "service", serviceId));
+    ```
+  - المستمعون (Listeners) يشتركون في الناقل بشكل معزول:
+    ```typescript
+    DomainEventBus.subscribe(ClinicCatalogUpdatedEvent.name, async (event) => {
+      // 1. Refresh RAG Context & Embeddings in background
+      // 2. Invalidate Conversation Cache
+      // 3. Rebuild dynamic prompt
+    });
+    ```
+  - يضمن هذا التجريد سهولة نقل الـ Event Bus مستقبلاً ليعتمد على حلول موزعة مثل Redis Streams أو RabbitMQ أو Kafka بمجرد تعديل فئة `DomainEventBus` ودون المساس بالـ Business Logic نهائياً.
