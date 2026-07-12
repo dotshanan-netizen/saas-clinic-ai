@@ -324,3 +324,27 @@ interface UpsertDoctorDto {
 2. **تغذية البيانات القديمة (Data Seeding & Migration):** تعديل ملف `prisma/seed.ts` لتوليد الفروع والأطباء وربطهم الافتراضي ببعضهم للعيادة الأولى (`rival-clinic`).
 3. **تحديث الكود القائم:**
    - تعديل دالة الاستقبال لقراءة الكتالوج الطبي حياً من جداول `Service` و `Doctor` و `Branch` المرتبطة بالعيادة بدلاً من الكتالوج الثابت.
+
+---
+
+## 8. إضافات معمارية متقدمة (Advanced Architectural Additions)
+
+تفعيلاً لمراجعة التصميم الهندسي للمنتج كمنصة SaaS آمنة، سنعتمد الآليات المعمارية التالية:
+
+### أ. تشفير معطيات القنوات الحساسة (Meta Access Token Encryption at Rest)
+* **المشكلة:** حفظ رموز الوصول (Access Tokens) كنصوص واضحة (Plain text) في قاعدة البيانات يعرض المنصة لمخاطر أمنية عالية في حال تسرب البيانات.
+* **الحل:** تشفير حقل `whatsappToken` تشفيراً متماثلاً (Symmetric Encryption) باستخدام خوارزمية `aes-256-cbc` عبر وحدة `crypto` الأساسية في Node.js.
+* **التنفيذ:** 
+  - إعداد متغير بيئة `ENCRYPTION_KEY` بطول 32 بايت و `ENCRYPTION_IV` بطول 16 بايت.
+  - إنشاء وحدة مساعدة `src/lib/encryption.ts` تحتوي على دالتين: `encrypt(text: string): string` و `decrypt(encrypted: string): string`.
+  - في الـ Service الخاص بـ Clinic Config، يتم استدعاء `encrypt` قبل حفظ الـ Token، واستدعاء `decrypt` فقط عند سحب الـ Token لاستدعاء Meta Cloud API.
+
+### ب. هيكلية الكتالوج المبنية على الأحداث (Event-Driven Catalog & RAG Sync)
+* **المشكلة:** تحديث الكتالوج (الخدمات، الأطباء، الفروع، الأسئلة الشائعة) دون مزامنة قد يؤدي إلى بقاء ذاكرة المساعد الذكي وسياق الـ RAG والـ Cache في حالة قديمة ومخالفة للحقيقة الفعلية بقاعدة البيانات.
+* **الحل:** تفعيل معمارية مبنية على الأحداث (Event-Driven Architecture) داخل المنصة.
+* **خطوات تدفق الأحداث (Domain Event Flow):**
+  1. عند قيام المسؤول بأي عملية (CRUD للخدمات/الأطباء/الفروع/قاعدة المعرفة)، يتم إرسال الحدث المناسب (مثال: `CatalogUpdatedEvent` أو `KnowledgeBaseUpdatedEvent`).
+  2. يستقبل مستمع الأحداث (Event Listener) في الخلفية هذا الحدث ويقوم بـ:
+     - **RAG Refresher:** تحديث وتوليد الـ Vector Embeddings للمستندات المعدلة ورفعها للـ Vector Store.
+     - **Cache Invalidation:** إفراغ وإلغاء صلاحية الـ Cache النشط للمحادثات الجارية لمنع تقديم خيارات قديمة للعملاء.
+     - **Dynamic Prompt Rebuilder:** إعادة صياغة الموجه الديناميكي ليتضمن الكتالوج المحدث فوراً.
