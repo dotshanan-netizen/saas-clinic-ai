@@ -173,17 +173,17 @@ export default function Dashboard() {
                 <p className="text-[10px] max-w-[200px] leading-relaxed">العميل لم يستكمل كامل البيانات المطلوبة بعد للحفظ في قاعدة البيانات.</p>
               </div>
             ) : (
-              <div className="space-y-4">
+              <div className="space-y-4" data-testid="booking-details">
                 <div className="space-y-3">
                   <div className="bg-zinc-950 p-4 rounded-xl border border-zinc-850 space-y-2">
                     <div>
                       <span className="text-[10px] text-zinc-500 block">اسم المريض</span>
-                      <span className="text-xs font-bold text-zinc-200">{selectedBooking.clientName}</span>
+                      <span className="text-xs font-bold text-zinc-200" data-testid="detail-client-name">{selectedBooking.clientName}</span>
                     </div>
                     <hr className="border-zinc-850" />
                     <div>
                       <span className="text-[10px] text-zinc-500 block">رقم الجوال</span>
-                      <span className="text-xs font-semibold text-zinc-200 font-mono">{selectedBooking.clientPhone}</span>
+                      <span className="text-xs font-semibold text-zinc-200 font-mono" data-testid="detail-client-phone">{selectedBooking.clientPhone}</span>
                     </div>
                   </div>
 
@@ -191,22 +191,22 @@ export default function Dashboard() {
                     <div className="grid grid-cols-2 gap-4">
                       <div>
                         <span className="text-[10px] text-zinc-500 block">الخدمة المطلوبة</span>
-                        <span className="text-xs font-semibold text-zinc-200">{selectedBooking.serviceName}</span>
+                        <span className="text-xs font-semibold text-zinc-200" data-testid="detail-service-name">{selectedBooking.serviceName}</span>
                       </div>
                       <div>
                         <span className="text-[10px] text-zinc-500 block">الطبيب المفضل</span>
-                        <span className="text-xs font-semibold text-zinc-200">{selectedBooking.doctorName}</span>
+                        <span className="text-xs font-semibold text-zinc-200" data-testid="detail-doctor-name">{selectedBooking.doctorName}</span>
                       </div>
                     </div>
                     <hr className="border-zinc-850" />
                     <div className="grid grid-cols-2 gap-4">
                       <div>
                         <span className="text-[10px] text-zinc-500 block">الفرع المختار</span>
-                        <span className="text-xs font-semibold text-zinc-200">{selectedBooking.branchName}</span>
+                        <span className="text-xs font-semibold text-zinc-200" data-testid="detail-branch-name">{selectedBooking.branchName}</span>
                       </div>
                       <div>
                         <span className="text-[10px] text-zinc-500 block">الوقت المفضل</span>
-                        <span className="text-xs font-semibold text-zinc-200">{selectedBooking.timeSlot}</span>
+                        <span className="text-xs font-semibold text-zinc-200" data-testid="detail-time-slot">{selectedBooking.timeSlot}</span>
                       </div>
                     </div>
                   </div>
@@ -218,6 +218,7 @@ export default function Dashboard() {
                     <button
                       onClick={() => handleUpdateStatus(selectedBooking.id, "CONFIRMED")}
                       disabled={updatingStatus}
+                      data-testid="confirm-booking-btn"
                       className="flex-1 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 text-zinc-950 font-bold text-xs transition-colors"
                     >
                       {updatingStatus ? "جاري التحديث..." : "✅ تأكيد الحجز"}
@@ -225,6 +226,7 @@ export default function Dashboard() {
                     <button
                       onClick={() => handleUpdateStatus(selectedBooking.id, "CANCELLED")}
                       disabled={updatingStatus}
+                      data-testid="cancel-booking-btn"
                       className="flex-1 py-2.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 disabled:opacity-50 text-rose-400 font-bold text-xs transition-colors border border-zinc-700"
                     >
                       {updatingStatus ? "..." : "❌ إلغاء الموعد"}
@@ -232,12 +234,12 @@ export default function Dashboard() {
                   </div>
                 )}
                 {selectedBooking.status === "CONFIRMED" && (
-                  <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl px-4 py-3 text-center">
+                  <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl px-4 py-3 text-center" data-testid="confirmed-status-banner">
                     <span className="text-emerald-400 font-bold text-xs">🟢 الحجز مؤكد</span>
                   </div>
                 )}
                 {selectedBooking.status === "CANCELLED" && (
-                  <div className="bg-rose-500/10 border border-rose-500/20 rounded-xl px-4 py-3 text-center">
+                  <div className="bg-rose-500/10 border border-rose-500/20 rounded-xl px-4 py-3 text-center" data-testid="cancelled-status-banner">
                     <span className="text-rose-400 font-bold text-xs">🔴 الموعد ملغى</span>
                   </div>
                 )}
@@ -320,6 +322,7 @@ export default function Dashboard() {
                       setSelectedClientPhone(conv.clientPhone);
                       fetchConversationDetails(conv.clientPhone);
                     }}
+                    data-testid={`patient-btn-${conv.clientPhone}`}
                     className={`w-full text-right p-3 rounded-xl border transition-all flex flex-col gap-1.5 outline-none cursor-pointer ${
                       isSelected
                         ? "bg-zinc-800 border-zinc-700"
@@ -330,7 +333,10 @@ export default function Dashboard() {
                       <span className="font-bold text-xs text-zinc-200">
                         {conv.clientName || "عميل جديد"}
                       </span>
-                      <span className={`text-[10px] font-semibold flex items-center gap-1.5 ${statusInfo.textClass}`}>
+                      <span 
+                        className={`text-[10px] font-semibold flex items-center gap-1.5 ${statusInfo.textClass}`}
+                        data-testid={`patient-status-${conv.clientPhone}`}
+                      >
                         <span className={`w-1.5 h-1.5 rounded-full ${statusInfo.dot}`}></span>
                         {statusInfo.label}
                       </span>

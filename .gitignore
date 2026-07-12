@@ -44,3 +44,7 @@ next-env.d.ts
 
 # boilerplate backup (Next.js default files)
 /backup_boilerplate
+
+# playwright test results
+/test-results/
+/playwright-report/
