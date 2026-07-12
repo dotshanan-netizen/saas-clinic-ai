@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { Prisma } from "../../../generated/prisma/index.js";
 import fs from "fs";
 import path from "path";
 
@@ -8,6 +9,15 @@ interface ChatMessage {
   role: "user" | "assistant";
   content: string;
   timestamp: string;
+}
+
+interface ExtractedBookingData {
+  clientName: string | null;
+  clientPhone: string | null;
+  serviceName: string | null;
+  doctorName: string | null;
+  branchName: string | null;
+  timeSlot: string | null;
 }
 
 function isValidSaudiPhone(phone: string): boolean {
@@ -94,7 +104,7 @@ export async function POST(request: Request) {
     }
 
     // 2. Fetch or create the conversation
-    let conversation = await prisma.conversation.findUnique({
+    const conversation = await prisma.conversation.findUnique({
       where: {
         clinicId_clientPhone: {
           clinicId: clinic.id,
@@ -118,7 +128,7 @@ export async function POST(request: Request) {
 
     let responseText = "";
     let humanTakeover = false;
-    let extractedBookingData: any = null;
+    let extractedBookingData: ExtractedBookingData | null = null;
 
     const apiKey = process.env.OPENAI_API_KEY;
 
@@ -237,9 +247,9 @@ ${branchesList}
         }
       }
 
-      const serviceNames = clinic.services.map((s: any) => s.name);
-      const doctorNames = clinic.doctors.map((d: any) => d.name);
-      const branchNames = clinic.branches.map((b: any) => b.name);
+      const serviceNames = clinic.services.map((s) => s.name);
+      const doctorNames = clinic.doctors.map((d) => d.name);
+      const branchNames = clinic.branches.map((b) => b.name);
 
       extractedBookingData.serviceName = normalizeToOfficial(
         extractedBookingData.serviceName,
@@ -267,14 +277,14 @@ ${branchesList}
     if (conversation) {
       await prisma.conversation.update({
         where: { id: conversation.id },
-        data: { messages: history as any },
+        data: { messages: history as unknown as Prisma.InputJsonValue },
       });
     } else {
       await prisma.conversation.create({
         data: {
           clientPhone,
           clinicId: clinic.id,
-          messages: history as any,
+          messages: history as unknown as Prisma.InputJsonValue,
         },
       });
     }
@@ -305,22 +315,22 @@ ${branchesList}
         where: {
           clinicId: clinic.id,
           clientPhone: finalPhone,
-          serviceName: extractedBookingData.serviceName,
+          serviceName: extractedBookingData.serviceName!,
           doctorName: finalDoctor,
-          branchName: extractedBookingData.branchName,
-          timeSlot: extractedBookingData.timeSlot,
+          branchName: extractedBookingData.branchName!,
+          timeSlot: extractedBookingData.timeSlot!,
         },
       });
 
       if (!existingBooking) {
         bookingCreated = await prisma.booking.create({
           data: {
-            clientName: extractedBookingData.clientName,
+            clientName: extractedBookingData.clientName!,
             clientPhone: finalPhone,
-            serviceName: extractedBookingData.serviceName,
+            serviceName: extractedBookingData.serviceName!,
             doctorName: finalDoctor,
-            branchName: extractedBookingData.branchName,
-            timeSlot: extractedBookingData.timeSlot,
+            branchName: extractedBookingData.branchName!,
+            timeSlot: extractedBookingData.timeSlot!,
             source: source,
             clinicId: clinic.id,
             status: "PENDING",
@@ -343,14 +353,22 @@ ${branchesList}
       bookingCreated: !!bookingCreated,
       existingBookingFound,
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Error in /api/chat:", error);
-    return NextResponse.json({ error: error.message || "Internal Server Error" }, { status: 500 });
+    const msg = error instanceof Error ? error.message : "Internal Server Error";
+    return NextResponse.json({ error: msg }, { status: 500 });
   }
 }
 
+interface ClinicWithCatalog {
+  name: string;
+  services: { name: string; price: number }[];
+  doctors: { name: string; specialty: string }[];
+  branches: { name: string }[];
+}
+
 // Simple Rule-Based Simulator for local/demo testing without OpenAI API Key
-function runFallbackSimulation(history: ChatMessage[], clinic: any, clientPhone: string) {
+function runFallbackSimulation(history: ChatMessage[], clinic: ClinicWithCatalog, clientPhone: string) {
   // Extract all user messages to check inputs
   const userMessages = history
     .filter((h) => h.role === "user")
@@ -418,13 +436,13 @@ function runFallbackSimulation(history: ChatMessage[], clinic: any, clientPhone:
   if (!clientName) {
     response = `يا هلا ومسهلا بكِ في ${clinic.name} 🌸\nأنا سارة مساعدتك الذكية عشان أخدمك في الحجوزات والاستفسارات. ممكن تفيديني باسمك الكريم ورقم جوالك عشان نسجلك بالنظام؟`;
   } else if (!serviceName) {
-    const listServices = clinic.services.map((s: any) => `- ${s.name} (${s.price} ريال)`).join("\n");
+    const listServices = clinic.services.map((s) => `- ${s.name} (${s.price} ريال)`).join("\n");
     response = `حياكِ الله يا ${clientName}، تسعدنا خدمتكِ 💖\nوش الإجراء اللي حابة تحجزيه اليوم؟ عندنا هذه الخدمات الرائعة حالياً:\n${listServices}`;
   } else if (!doctorName) {
-    const listDocs = clinic.doctors.map((d: any) => `- ${d.name} (${d.specialty})`).join("\n");
+    const listDocs = clinic.doctors.map((d) => `- ${d.name} (${d.specialty})`).join("\n");
     response = `تسلمين يا قلبي، بخصوص خدمة (${serviceName})، هل فيه طبيب أو أخصائي معين تفضلين تحجزين معه؟\nمتاح عندنا:\n${listDocs}\n(أو تقدرين تقولين المتاح)`;
   } else if (!branchName) {
-    const listBranches = clinic.branches.map((b: any) => `- ${b.name}`).join("\n");
+    const listBranches = clinic.branches.map((b) => `- ${b.name}`).join("\n");
     response = `تمام يا روحي، الحجز مع (${doctorName}). أي فرع يناسبك أكثر للزيارة؟\nمتاح عندنا:\n${listBranches}`;
   } else if (!timeSlot) {
     response = `على راسي، حجزك في (${branchName}). وش الوقت والتاريخ المفضل لكِ؟ تفضلين فترات صباحية (9 لـ 12) ولا مسائية (4 لـ 9)؟ وفي أي يوم؟`;

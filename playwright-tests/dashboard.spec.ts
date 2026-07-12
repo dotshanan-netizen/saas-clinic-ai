@@ -120,7 +120,7 @@ test.describe("Reception Dashboard E2E Tests", () => {
     await expect(page.getByTestId("cancel-booking-btn")).toBeHidden();
 
     // Verify DB updated
-    let dbBooking = await prisma.booking.findUnique({ where: { id: bookingId } });
+    const dbBooking = await prisma.booking.findUnique({ where: { id: bookingId } });
     expect(dbBooking?.status).toBe("CONFIRMED");
   });
 });

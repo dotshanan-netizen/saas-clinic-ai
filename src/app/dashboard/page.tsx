@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import Link from "next/link";
 
 interface ConversationItem {
   id: string;
@@ -100,7 +101,17 @@ export default function Dashboard() {
   };
 
   useEffect(() => {
-    fetchConversations();
+    let active = true;
+    
+    setTimeout(() => {
+      if (active) {
+        fetchConversations();
+      }
+    }, 0);
+
+    return () => {
+      active = false;
+    };
   }, []);
 
   // Helpers for Status Icons/Labels
@@ -138,12 +149,12 @@ export default function Dashboard() {
           >
             🔄 تحديث البيانات
           </button>
-          <a
+          <Link
             href="/"
             className="px-4 py-2 rounded-lg bg-zinc-850 hover:bg-zinc-800 border border-zinc-700 text-xs font-semibold text-zinc-200 transition-colors"
           >
             الصفحة الرئيسية
-          </a>
+          </Link>
         </div>
       </header>
 
