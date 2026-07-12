@@ -229,6 +229,14 @@ ${branchesList}
 
     // Apply Normalization: replace GPT's extracted names with official DB names
     if (extractedBookingData) {
+      // Programmatic check: invalidate single-character name to match business rules
+      if (extractedBookingData.clientName) {
+        const trimmedName = extractedBookingData.clientName.trim();
+        if (trimmedName.length <= 1) {
+          extractedBookingData.clientName = null;
+        }
+      }
+
       const serviceNames = clinic.services.map((s: any) => s.name);
       const doctorNames = clinic.doctors.map((d: any) => d.name);
       const branchNames = clinic.branches.map((b: any) => b.name);
