@@ -1,0 +1,80 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Clinic {
+  id           String         @id @default(cuid())
+  name         String
+  slug         String         @unique
+  customPrompt String?        @db.Text
+  createdAt    DateTime       @default(now())
+  branches     Branch[]
+  doctors      Doctor[]
+  services     Service[]
+  bookings     Booking[]
+  conversations Conversation[]
+}
+
+model Branch {
+  id        String   @id @default(cuid())
+  name      String
+  address   String
+  clinicId  String
+  clinic    Clinic   @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+}
+
+model Doctor {
+  id        String   @id @default(cuid())
+  name      String
+  specialty String
+  clinicId  String
+  clinic    Clinic   @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+}
+
+model Service {
+  id          String   @id @default(cuid())
+  name        String
+  price       Float
+  description String?
+  clinicId    String
+  clinic      Clinic   @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+}
+
+model Booking {
+  id          String   @id @default(cuid())
+  clientName  String
+  clientPhone String
+  serviceName String
+  doctorName  String
+  branchName  String
+  timeSlot    String
+  source      String   // e.g. "Snapchat", "Instagram", "Google", "Simulator"
+  status      String   @default("PENDING") // PENDING, CONFIRMED, COMPLETED, CANCELLED
+  clinicId    String
+  clinic      Clinic   @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+}
+
+model Conversation {
+  id          String   @id @default(cuid())
+  clientPhone String
+  messages    Json     // Array of message objects {role: "user"|"assistant", content: string, timestamp: Date}
+  clinicId    String
+  clinic      Clinic   @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  updatedAt   DateTime @updatedAt
+  createdAt   DateTime @default(now())
+
+  @@unique([clinicId, clientPhone])
+}
