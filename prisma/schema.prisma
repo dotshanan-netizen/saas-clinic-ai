@@ -11,6 +11,24 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum EntityStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum BookingStatus {
+  PENDING
+  CONFIRMED
+  COMPLETED
+  CANCELLED
+}
+
+enum KbCategory {
+  FAQ
+  POLICY
+  GENERAL_INFO
+}
+
 model Clinic {
   id                  String         @id @default(cuid())
   name                String
@@ -44,12 +62,29 @@ model Branch {
   city           String         @default("الرياض")
   address        String
   phone          String?
-  operatingHours String?        @db.Text
-  status         String         @default("ACTIVE") // ACTIVE, INACTIVE
+  status         EntityStatus   @default(ACTIVE)
   clinicId       String
   clinic         Clinic         @relation(fields: [clinicId], references: [id], onDelete: Cascade)
   doctors        DoctorBranch[]
+  workingHours   WorkingHour[]
   createdAt      DateTime       @default(now())
+
+  @@index([clinicId])
+  @@index([status])
+}
+
+model WorkingHour {
+  id        String   @id @default(cuid())
+  branchId  String
+  branch    Branch   @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  dayOfWeek String   // e.g. "MONDAY", "TUESDAY", etc.
+  startTime String   // e.g. "09:00"
+  endTime   String   // e.g. "17:00"
+  isClosed  Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@unique([branchId, dayOfWeek])
+  @@index([branchId])
 }
 
 model Doctor {
@@ -57,12 +92,15 @@ model Doctor {
   name      String
   specialty String
   imageUrl  String?
-  status    String         @default("ACTIVE") // ACTIVE, INACTIVE
+  status    EntityStatus   @default(ACTIVE)
   clinicId  String
   clinic    Clinic         @relation(fields: [clinicId], references: [id], onDelete: Cascade)
   branches  DoctorBranch[]
   services  DoctorService[]
   createdAt DateTime       @default(now())
+
+  @@index([clinicId])
+  @@index([status])
 }
 
 model Service {
@@ -71,11 +109,14 @@ model Service {
   description     String?         @db.Text
   price           Float
   durationMinutes Int             @default(30)
-  status          String          @default("ACTIVE") // ACTIVE, INACTIVE
+  status          EntityStatus    @default(ACTIVE)
   clinicId        String
   clinic          Clinic          @relation(fields: [clinicId], references: [id], onDelete: Cascade)
   doctors         DoctorService[]
   createdAt       DateTime        @default(now())
+
+  @@index([clinicId])
+  @@index([status])
 }
 
 // Join model for Doctor-Branch relationship
@@ -87,6 +128,8 @@ model DoctorBranch {
   branch   Branch @relation(fields: [branchId], references: [id], onDelete: Cascade)
 
   @@unique([doctorId, branchId])
+  @@index([doctorId])
+  @@index([branchId])
 }
 
 // Join model for Doctor-Service relationship
@@ -98,30 +141,39 @@ model DoctorService {
   service   Service @relation(fields: [serviceId], references: [id], onDelete: Cascade)
 
   @@unique([doctorId, serviceId])
+  @@index([doctorId])
+  @@index([serviceId])
 }
 
 model KnowledgeBase {
-  id        String   @id @default(cuid())
-  category  String   // FAQS, POLICIES, INFO
-  content   String   @db.Text
+  id        String     @id @default(cuid())
+  category  KbCategory
+  content   String     @db.Text
   clinicId  String
-  clinic    Clinic   @relation(fields: [clinicId], references: [id], onDelete: Cascade)
-  createdAt DateTime @default(now())
+  clinic    Clinic     @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  createdAt DateTime   @default(now())
+
+  @@index([clinicId])
+  @@index([createdAt])
 }
 
 model Booking {
-  id          String   @id @default(cuid())
+  id          String        @id @default(cuid())
   clientName  String
   clientPhone String
   serviceName String
   doctorName  String
   branchName  String
   timeSlot    String
-  source      String   // e.g. "Snapchat", "Instagram", "Google", "Simulator"
-  status      String   @default("PENDING") // PENDING, CONFIRMED, COMPLETED, CANCELLED
+  source      String        // e.g. "Snapchat", "Instagram", "Google", "Simulator"
+  status      BookingStatus @default(PENDING)
   clinicId    String
-  clinic      Clinic   @relation(fields: [clinicId], references: [id], onDelete: Cascade)
-  createdAt   DateTime @default(now())
+  clinic      Clinic        @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  createdAt   DateTime      @default(now())
+
+  @@index([clinicId])
+  @@index([status])
+  @@index([createdAt])
 }
 
 model Conversation {
@@ -134,4 +186,6 @@ model Conversation {
   createdAt   DateTime @default(now())
 
   @@unique([clinicId, clientPhone])
+  @@index([clinicId])
+  @@index([updatedAt])
 }

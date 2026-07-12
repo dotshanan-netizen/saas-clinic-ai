@@ -9,6 +9,10 @@ async function main() {
   // Clear existing data to avoid duplication on re-run
   await prisma.booking.deleteMany({});
   await prisma.conversation.deleteMany({});
+  await prisma.doctorBranch.deleteMany({});
+  await prisma.doctorService.deleteMany({});
+  await prisma.workingHour.deleteMany({});
+  await prisma.knowledgeBase.deleteMany({});
   await prisma.service.deleteMany({});
   await prisma.doctor.deleteMany({});
   await prisma.branch.deleteMany({});
@@ -41,97 +45,163 @@ async function main() {
   console.log(`Clinic created: ${clinic.name} (${clinic.id})`);
 
   // Create Branches
-  const branches = await Promise.all([
-    prisma.branch.create({
-      data: {
-        name: "فرع الصحافة",
-        address: "طريق الملك فهد، حي الصحافة، الرياض",
-        clinicId: clinic.id
-      }
-    }),
-    prisma.branch.create({
-      data: {
-        name: "فرع التحلية",
-        address: "شارع التحلية (الأمير محمد بن عبد العزيز)، الرياض",
-        clinicId: clinic.id
-      }
-    })
-  ]);
+  const branchSahafa = await prisma.branch.create({
+    data: {
+      name: "فرع الصحافة",
+      city: "الرياض",
+      address: "طريق الملك فهد، حي الصحافة، الرياض",
+      clinicId: clinic.id
+    }
+  });
 
-  console.log(`Created ${branches.length} branches.`);
+  const branchTahliya = await prisma.branch.create({
+    data: {
+      name: "فرع التحلية",
+      city: "الرياض",
+      address: "شارع التحلية (الأمير محمد بن عبد العزيز)، الرياض",
+      clinicId: clinic.id
+    }
+  });
+
+  console.log(`Created branches: ${branchSahafa.name}, ${branchTahliya.name}`);
+
+  // Create Working Hours for both branches
+  const days = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY"];
+  for (const b of [branchSahafa, branchTahliya]) {
+    for (const d of days) {
+      await prisma.workingHour.create({
+        data: {
+          branchId: b.id,
+          dayOfWeek: d,
+          startTime: "09:00",
+          endTime: "21:00",
+          isClosed: d === "FRIDAY" // Friday is closed
+        }
+      });
+    }
+  }
+  console.log("Created working hours for branches.");
 
   // Create Doctors
-  const doctors = await Promise.all([
-    prisma.doctor.create({
-      data: {
-        name: "د. سحر",
-        specialty: "جلدية وتجميل",
-        clinicId: clinic.id
-      }
-    }),
-    prisma.doctor.create({
-      data: {
-        name: "د. أحمد",
-        specialty: "جراحة تجميلية",
-        clinicId: clinic.id
-      }
-    }),
-    prisma.doctor.create({
-      data: {
-        name: "الأخصائية نورة",
-        specialty: "ليزر وعناية بالبشرة",
-        clinicId: clinic.id
-      }
-    })
-  ]);
+  const docSahar = await prisma.doctor.create({
+    data: {
+      name: "د. سحر",
+      specialty: "جلدية وتجميل",
+      clinicId: clinic.id
+    }
+  });
 
-  console.log(`Created ${doctors.length} doctors.`);
+  const docAhmed = await prisma.doctor.create({
+    data: {
+      name: "د. أحمد",
+      specialty: "جراحة تجميلية",
+      clinicId: clinic.id
+    }
+  });
+
+  const docNoura = await prisma.doctor.create({
+    data: {
+      name: "الأخصائية نورة",
+      specialty: "ليزر وعناية بالبشرة",
+      clinicId: clinic.id
+    }
+  });
+
+  console.log("Created doctors.");
 
   // Create Services
-  const services = await Promise.all([
-    prisma.service.create({
-      data: {
-        name: "بوتكس كامل للوجه",
-        price: 500,
-        description: "إزالة تجاعيد الجبهة وحول العينين باستخدام البوتكس الأصلي الأمريكي.",
-        clinicId: clinic.id
-      }
-    }),
-    prisma.service.create({
-      data: {
-        name: "فيلر الشفايف",
-        price: 1200,
-        description: "توريد وتعبئة الشفايف بالفيلر السويسري المناسب لنضارة طبيعية.",
-        clinicId: clinic.id
-      }
-    }),
-    prisma.service.create({
-      data: {
-        name: "ليزر إزالة الشعر جسم كامل",
-        price: 450,
-        description: "جلسة ليزر جسم كامل مع الرتوش باستخدام جهاز جنتل برو الحديث.",
-        clinicId: clinic.id
-      }
-    }),
-    prisma.service.create({
-      data: {
-        name: "تنظيف البشرة العميق",
-        price: 350,
-        description: "تنظيف هيدرافيشل عميق للبشرة لإزالة الرؤوس السوداء وإعادة النضارة.",
-        clinicId: clinic.id
-      }
-    }),
-    prisma.service.create({
-      data: {
-        name: "كشفية جلدية وتجميل",
-        price: 150,
-        description: "كشفية مع طبيب الجلدية لتحديد المشاكل ووضع خطة العلاج المناسبة.",
-        clinicId: clinic.id
-      }
-    })
-  ]);
+  const botox = await prisma.service.create({
+    data: {
+      name: "بوتكس كامل للوجه",
+      price: 500,
+      description: "إزالة تجاعيد الجبهة وحول العينين باستخدام البوتكس الأصلي الأمريكي.",
+      clinicId: clinic.id
+    }
+  });
 
-  console.log(`Created ${services.length} services.`);
+  const filler = await prisma.service.create({
+    data: {
+      name: "فيلر الشفايف",
+      price: 1200,
+      description: "توريد وتعبئة الشفايف بالفيلر السويسري المناسب لنضارة طبيعية.",
+      clinicId: clinic.id
+    }
+  });
+
+  const laser = await prisma.service.create({
+    data: {
+      name: "ليزر إزالة الشعر جسم كامل",
+      price: 450,
+      description: "جلسة ليزر جسم كامل مع الرتوش باستخدام جهاز جنتل برو الحديث.",
+      clinicId: clinic.id
+    }
+  });
+
+  const hydra = await prisma.service.create({
+    data: {
+      name: "تنظيف البشرة العميق",
+      price: 350,
+      description: "تنظيف هيدرافيشل عميق للبشرة لإزالة الرؤوس السوداء وإعادة النضارة.",
+      clinicId: clinic.id
+    }
+  });
+
+  const consultation = await prisma.service.create({
+    data: {
+      name: "كشفية جلدية وتجميل",
+      price: 150,
+      description: "كشفية مع طبيب الجلدية لتحديد المشاكل ووضع خطة العلاج المناسبة.",
+      clinicId: clinic.id
+    }
+  });
+
+  console.log("Created services.");
+
+  // Link Doctors to Branches (DoctorBranch)
+  // د. سحر تعمل في الفرعين
+  await prisma.doctorBranch.createMany({
+    data: [
+      { doctorId: docSahar.id, branchId: branchSahafa.id },
+      { doctorId: docSahar.id, branchId: branchTahliya.id }
+    ]
+  });
+
+  // د. أحمد يعمل في التحلية فقط
+  await prisma.doctorBranch.create({
+    data: { doctorId: docAhmed.id, branchId: branchTahliya.id }
+  });
+
+  // الأخصائية نورة تعمل في الصحافة فقط
+  await prisma.doctorBranch.create({
+    data: { doctorId: docNoura.id, branchId: branchSahafa.id }
+  });
+
+  console.log("Linked doctors to branches.");
+
+  // Link Doctors to Services (DoctorService)
+  // د. سحر تقدم البوتكس، الفيلر، والكشفية
+  await prisma.doctorService.createMany({
+    data: [
+      { doctorId: docSahar.id, serviceId: botox.id },
+      { doctorId: docSahar.id, serviceId: filler.id },
+      { doctorId: docSahar.id, serviceId: consultation.id }
+    ]
+  });
+
+  // د. أحمد يقدم الكشفية فقط في الجراحة التجميلية
+  await prisma.doctorService.create({
+    data: { doctorId: docAhmed.id, serviceId: consultation.id }
+  });
+
+  // الأخصائية نورة تقدم الليزر وتنظيف البشرة العميق
+  await prisma.doctorService.createMany({
+    data: [
+      { doctorId: docNoura.id, serviceId: laser.id },
+      { doctorId: docNoura.id, serviceId: hydra.id }
+    ]
+  });
+
+  console.log("Linked doctors to services.");
   console.log("Seeding completed successfully!");
 }
 
