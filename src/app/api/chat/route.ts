@@ -89,7 +89,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: true, message: "Conversation reset successfully" });
     }
 
-    if (!message) {
+    if (!message || message.trim() === "") {
       return NextResponse.json({ error: "Missing required field: message" }, { status: 450 });
     }
 
