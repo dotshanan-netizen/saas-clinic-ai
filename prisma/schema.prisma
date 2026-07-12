@@ -12,44 +12,101 @@ datasource db {
 }
 
 model Clinic {
-  id           String         @id @default(cuid())
-  name         String
-  slug         String         @unique
-  customPrompt String?        @db.Text
-  createdAt    DateTime       @default(now())
-  branches     Branch[]
-  doctors      Doctor[]
-  services     Service[]
-  bookings     Booking[]
-  conversations Conversation[]
+  id                  String         @id @default(cuid())
+  name                String
+  slug                String         @unique
+  logoUrl             String?
+  description         String?        @db.Text
+  contactPhone        String?
+  customPrompt        String?        @db.Text
+  welcomeMessage      String?        @db.Text
+  operatingHours      String?        @db.Text
+  
+  // WhatsApp Meta Cloud API Configuration
+  whatsappPhoneId     String?
+  whatsappToken       String?        @db.Text
+  whatsappWabaId      String?
+  whatsappVerifyToken String?
+  isAiActive          Boolean        @default(true)
+
+  createdAt           DateTime       @default(now())
+  branches            Branch[]
+  doctors             Doctor[]
+  services            Service[]
+  bookings            Booking[]
+  conversations       Conversation[]
+  knowledgeBase       KnowledgeBase[]
 }
 
 model Branch {
-  id        String   @id @default(cuid())
-  name      String
-  address   String
-  clinicId  String
-  clinic    Clinic   @relation(fields: [clinicId], references: [id], onDelete: Cascade)
-  createdAt DateTime @default(now())
+  id             String         @id @default(cuid())
+  name           String
+  city           String         @default("الرياض")
+  address        String
+  phone          String?
+  operatingHours String?        @db.Text
+  status         String         @default("ACTIVE") // ACTIVE, INACTIVE
+  clinicId       String
+  clinic         Clinic         @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  doctors        DoctorBranch[]
+  createdAt      DateTime       @default(now())
 }
 
 model Doctor {
-  id        String   @id @default(cuid())
+  id        String         @id @default(cuid())
   name      String
   specialty String
+  imageUrl  String?
+  status    String         @default("ACTIVE") // ACTIVE, INACTIVE
   clinicId  String
-  clinic    Clinic   @relation(fields: [clinicId], references: [id], onDelete: Cascade)
-  createdAt DateTime @default(now())
+  clinic    Clinic         @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  branches  DoctorBranch[]
+  services  DoctorService[]
+  createdAt DateTime       @default(now())
 }
 
 model Service {
-  id          String   @id @default(cuid())
-  name        String
-  price       Float
-  description String?
-  clinicId    String
-  clinic      Clinic   @relation(fields: [clinicId], references: [id], onDelete: Cascade)
-  createdAt   DateTime @default(now())
+  id              String          @id @default(cuid())
+  name            String
+  description     String?         @db.Text
+  price           Float
+  durationMinutes Int             @default(30)
+  status          String          @default("ACTIVE") // ACTIVE, INACTIVE
+  clinicId        String
+  clinic          Clinic          @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  doctors         DoctorService[]
+  createdAt       DateTime        @default(now())
+}
+
+// Join model for Doctor-Branch relationship
+model DoctorBranch {
+  id       String @id @default(cuid())
+  doctorId String
+  doctor   Doctor @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  branchId String
+  branch   Branch @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  @@unique([doctorId, branchId])
+}
+
+// Join model for Doctor-Service relationship
+model DoctorService {
+  id        String  @id @default(cuid())
+  doctorId  String
+  doctor    Doctor  @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  serviceId String
+  service   Service @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+
+  @@unique([doctorId, serviceId])
+}
+
+model KnowledgeBase {
+  id        String   @id @default(cuid())
+  category  String   // FAQS, POLICIES, INFO
+  content   String   @db.Text
+  clinicId  String
+  clinic    Clinic   @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
 }
 
 model Booking {
