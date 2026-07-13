@@ -150,6 +150,12 @@ export default function Dashboard() {
             🔄 تحديث البيانات
           </button>
           <Link
+            href="/dashboard/settings"
+            className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-xs font-semibold text-white transition-colors"
+          >
+            ⚙️ إعدادات العيادة
+          </Link>
+          <Link
             href="/"
             className="px-4 py-2 rounded-lg bg-zinc-850 hover:bg-zinc-800 border border-zinc-700 text-xs font-semibold text-zinc-200 transition-colors"
           >
