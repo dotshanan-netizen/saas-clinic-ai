@@ -1,10 +1,15 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 import Link from "next/link";
 import { ClinicProfileCard } from "@/components/dashboard/settings/ClinicProfileCard";
+import { BranchTable } from "@/components/dashboard/settings/BranchTable";
+
+type SettingsTab = "profile" | "branches";
 
 export default function SettingsPage() {
+  const [activeTab, setActiveTab] = useState<SettingsTab>("profile");
+
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100 flex flex-col font-sans antialiased" dir="rtl">
       {/* Header */}
@@ -17,7 +22,7 @@ export default function SettingsPage() {
             <h1 className="text-xl font-bold bg-gradient-to-r from-indigo-400 to-purple-200 bg-clip-text text-transparent">
               إعدادات المنصة والعيادة – Settings
             </h1>
-            <p className="text-xs text-zinc-400">تخصيص الملف التعريفي، قنوات التواصل وسلوك المساعد الذكي</p>
+            <p className="text-xs text-zinc-400">تخصيص الملف التعريفي، الفروع، قنوات التواصل وسلوك المساعد الذكي</p>
           </div>
         </div>
 
@@ -40,8 +45,42 @@ export default function SettingsPage() {
           <span className="text-zinc-400 font-medium">إعدادات العيادة</span>
         </div>
 
-        {/* Sprint 3A Component: Clinic Profile Card */}
-        <ClinicProfileCard />
+        {/* Dynamic Tab Switcher */}
+        <div className="flex border-b border-zinc-800 gap-6">
+          <button
+            onClick={() => setActiveTab("profile")}
+            className={`pb-3 text-xs font-bold transition-all relative cursor-pointer ${
+              activeTab === "profile"
+                ? "text-indigo-400"
+                : "text-zinc-500 hover:text-zinc-300"
+            }`}
+          >
+            🏢 ملف العيادة الأساسي
+            {activeTab === "profile" && (
+              <span className="absolute bottom-0 left-0 right-0 h-[2px] bg-indigo-500 rounded-full" />
+            )}
+          </button>
+          
+          <button
+            onClick={() => setActiveTab("branches")}
+            className={`pb-3 text-xs font-bold transition-all relative cursor-pointer ${
+              activeTab === "branches"
+                ? "text-indigo-400"
+                : "text-zinc-500 hover:text-zinc-300"
+            }`}
+          >
+            📍 الفروع وأوقات العمل
+            {activeTab === "branches" && (
+              <span className="absolute bottom-0 left-0 right-0 h-[2px] bg-indigo-500 rounded-full" />
+            )}
+          </button>
+        </div>
+
+        {/* Tab Contents */}
+        <div className="pt-2">
+          {activeTab === "profile" && <ClinicProfileCard />}
+          {activeTab === "branches" && <BranchTable />}
+        </div>
       </main>
     </div>
   );
