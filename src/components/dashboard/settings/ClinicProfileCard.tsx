@@ -87,8 +87,6 @@ export function ClinicProfileCard() {
       isAiActive,
     };
 
-    console.log("[ClinicProfileCard] Submitting payload:", payload);
-
     try {
       const res = await fetch("/api/clinic/config", {
         method: "POST",

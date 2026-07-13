@@ -19,21 +19,6 @@ test.describe("Sprint 3A: Clinic Profile Frontend UI Tests", () => {
   });
 
   test("should navigate to settings page, load profile, edit profile, and successfully save changes", async ({ page }) => {
-    // Print browser console logs in terminal
-    page.on('console', msg => console.log('[Browser Console]', msg.text()));
-
-    // Debug API calls
-    page.on('response', async (response) => {
-      if (response.url().includes('/api/clinic/config')) {
-        try {
-          const body = await response.json();
-          console.log(`[API Debug] ${response.request().method()} ${response.url()} -> Status: ${response.status()}`, body);
-        } catch {
-          console.log(`[API Debug] ${response.request().method()} ${response.url()} -> Status: ${response.status()}`);
-        }
-      }
-    });
-
     // 1. Go to reception dashboard
     await page.goto("/dashboard");
     await expect(page.locator("h1")).toContainText("لوحة موظف الاستقبال");
@@ -50,7 +35,6 @@ test.describe("Sprint 3A: Clinic Profile Frontend UI Tests", () => {
     const nameInput = page.locator('input[placeholder="مثال: عيادة ريفال للتجميل"]');
     await expect(nameInput).toHaveValue("عيادة ريفال للتجميل");
     await nameInput.fill(newName);
-    console.log('[Test Debug] INPUT VALUE AFTER FILL:', await nameInput.inputValue());
 
     // 5. Change AI Toggle status
     const aiCheckbox = page.locator('input[type="checkbox"]');
@@ -59,14 +43,21 @@ test.describe("Sprint 3A: Clinic Profile Frontend UI Tests", () => {
     await page.locator('input[type="checkbox"] + div').click();
     expect(await aiCheckbox.isChecked()).toBe(!isChecked);
 
+    // Set up network response waiter for the POST request before clicking
+    const postResponsePromise = page.waitForResponse(response =>
+      response.url().includes("/api/clinic/config") &&
+      response.request().method() === "POST" &&
+      response.status() === 200
+    );
+
     // 6. Click on "حفظ التعديلات ✨"
     await page.click("text=حفظ التعديلات");
 
+    // Wait for the POST request API response to finish successfully
+    await postResponsePromise;
+
     // 7. Verify success alert/banner is displayed in UI
     await expect(page.locator("text=تم حفظ الملف التعريفي للعيادة بنجاح")).toBeVisible();
-
-    // Give database pool a brief moment to sync
-    await page.waitForTimeout(1000);
 
     // 8. Directly verify DB record is updated
     const dbClinic = await prisma.clinic.findUnique({
