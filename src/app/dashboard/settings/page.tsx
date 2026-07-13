@@ -4,8 +4,9 @@ import React, { useState } from "react";
 import Link from "next/link";
 import { ClinicProfileCard } from "@/components/dashboard/settings/ClinicProfileCard";
 import { BranchTable } from "@/components/dashboard/settings/BranchTable";
+import { ServiceTable } from "@/components/dashboard/settings/ServiceTable";
 
-type SettingsTab = "profile" | "branches";
+type SettingsTab = "profile" | "branches" | "services";
 
 export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState<SettingsTab>("profile");
@@ -22,7 +23,7 @@ export default function SettingsPage() {
             <h1 className="text-xl font-bold bg-gradient-to-r from-indigo-400 to-purple-200 bg-clip-text text-transparent">
               إعدادات المنصة والعيادة – Settings
             </h1>
-            <p className="text-xs text-zinc-400">تخصيص الملف التعريفي، الفروع، قنوات التواصل وسلوك المساعد الذكي</p>
+            <p className="text-xs text-zinc-400">تخصيص الملف التعريفي، الفروع، الخدمات، قنوات التواصل وسلوك المساعد الذكي</p>
           </div>
         </div>
 
@@ -74,12 +75,27 @@ export default function SettingsPage() {
               <span className="absolute bottom-0 left-0 right-0 h-[2px] bg-indigo-500 rounded-full" />
             )}
           </button>
+
+          <button
+            onClick={() => setActiveTab("services")}
+            className={`pb-3 text-xs font-bold transition-all relative cursor-pointer ${
+              activeTab === "services"
+                ? "text-indigo-400"
+                : "text-zinc-500 hover:text-zinc-300"
+            }`}
+          >
+            🩺 الخدمات الطبية
+            {activeTab === "services" && (
+              <span className="absolute bottom-0 left-0 right-0 h-[2px] bg-indigo-500 rounded-full" />
+            )}
+          </button>
         </div>
 
         {/* Tab Contents */}
         <div className="pt-2">
           {activeTab === "profile" && <ClinicProfileCard />}
           {activeTab === "branches" && <BranchTable />}
+          {activeTab === "services" && <ServiceTable />}
         </div>
       </main>
     </div>
