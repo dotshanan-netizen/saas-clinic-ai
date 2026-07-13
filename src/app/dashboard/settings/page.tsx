@@ -7,8 +7,9 @@ import { BranchTable } from "@/components/dashboard/settings/BranchTable";
 import { ServiceTable } from "@/components/dashboard/settings/ServiceTable";
 import { DoctorTable } from "@/components/dashboard/settings/DoctorTable";
 import { KnowledgeBaseTable } from "@/components/dashboard/settings/KnowledgeBaseTable";
+import { WhatsappAiSettings } from "@/components/dashboard/settings/WhatsappAiSettings";
 
-type SettingsTab = "profile" | "branches" | "services" | "doctors" | "kb";
+type SettingsTab = "profile" | "branches" | "services" | "doctors" | "kb" | "whatsapp-ai";
 
 export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState<SettingsTab>("profile");
@@ -119,6 +120,20 @@ export default function SettingsPage() {
               <span className="absolute bottom-0 left-0 right-0 h-[2px] bg-indigo-500 rounded-full" />
             )}
           </button>
+
+          <button
+            onClick={() => setActiveTab("whatsapp-ai")}
+            className={`pb-3 text-xs font-bold transition-all relative cursor-pointer flex-shrink-0 ${
+              activeTab === "whatsapp-ai"
+                ? "text-indigo-400"
+                : "text-zinc-500 hover:text-zinc-300"
+            }`}
+          >
+            💬 قنوات الاتصال والذكاء
+            {activeTab === "whatsapp-ai" && (
+              <span className="absolute bottom-0 left-0 right-0 h-[2px] bg-indigo-500 rounded-full" />
+            )}
+          </button>
         </div>
 
         {/* Tab Contents */}
@@ -128,6 +143,7 @@ export default function SettingsPage() {
           {activeTab === "services" && <ServiceTable />}
           {activeTab === "doctors" && <DoctorTable />}
           {activeTab === "kb" && <KnowledgeBaseTable />}
+          {activeTab === "whatsapp-ai" && <WhatsappAiSettings />}
         </div>
       </main>
     </div>
