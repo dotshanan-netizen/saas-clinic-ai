@@ -45,7 +45,7 @@ test.describe("Reception Dashboard E2E Tests", () => {
     await page.goto("/dashboard");
     await page.waitForLoadState("networkidle");
     await page.getByTestId(`patient-btn-${testPhone}`).click();
-    await page.waitForTimeout(500); // Allow react state transitions
+    await expect(page.getByTestId("detail-client-name")).toHaveText("منى محمد");
   });
 
   // Run after each test to clean up

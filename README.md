@@ -1,36 +1,90 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# ADMIND: Phase 2 SaaS Clinic AI Receptionist — Pilot Deployment Guide
 
-## Getting Started
+نظام موظف الاستقبال الذكي لعيادات التجميل والصحة والخدمات المتقدمة المعتمد على الذكاء الاصطناعي ورسائل WhatsApp.
 
-First, run the development server:
+---
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+## 🏗️ البنية المعمارية للنظام (System Architecture Overview)
+
+يعتمد تطبيق **ADMIND** على تصميم معماري نظيف وعزل طبقات متين (Clean Architecture & Layers Separation):
+* **Domain Layer:** تحتوي على كائنات الأعمال والكيانات والنماذج.
+* **Repository Pattern:** طبقة تجريد الوصول لقاعدة البيانات. تم عزل واجهات المستودعات (Interfaces) في `src/repositories/interfaces/` بينما يتواجد تطبيق Concrete باستخدام Prisma في `src/repositories/prisma/`.
+* **Service Layer:** تحتوي على منطق العمل الأساسي واستدعاء التشفير وإرسال أحداث النطاق (Domain Events).
+* **DTOs & Strict Validation:** حماية المدخلات بالكامل باستخدام مخططات Zod الصارمة لمنع أي حقن أو بيانات خبيثة.
+* **Security & Encryption:** تشفير رموز واتساب الحساسة (Access Tokens) تلقائياً قبل الحفظ في قاعدة البيانات باستخدام خوارزمية **AES-256-GCM** مع تخزين الـ IV و Auth Tag.
+
+---
+
+## ⚙️ متغيرات البيئة الأساسية (Environment Variables Reference)
+
+يجب إنشاء ملف `.env` في المجلد الرئيسي بالمتغيرات التالية:
+
+```env
+# رابط قاعدة بيانات PostgreSQL (نوصي بـ Neon DB أو Supabase)
+DATABASE_URL="postgresql://user:password@host:port/dbname?sslmode=require"
+
+# مفتاح التشفير المتماثل للتوكنات الحساسة (يجب أن يكون 32 بايت / 64 حرف سداسي عشري)
+# مثال للتوليد: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+ENCRYPTION_KEY="64_hexadecimal_characters_here"
+
+# منفذ تشغيل الملقم المحلي
+PORT=3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+---
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## 🚀 تشغيل النظام محلياً وبناء الإنتاج (Getting Started & Build)
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+### 1. تثبيت الحزم التبعية
+```bash
+npm install
+```
 
-## Learn More
+### 2. تجهيز قاعدة البيانات والبذر (Prisma Setup & Seed)
+لتنظيف وتوليد قاعدة البيانات وبذر بيانات العرض الواقعي للعيادة (الديمو):
+```bash
+npx prisma generate
+npx prisma db push
+npx prisma db seed
+```
+> [!NOTE]
+> سيقوم كود البذر تلقائياً بإنشاء "عيادة ريفال للتجميل"، وفرعين (الصحافة والتحلية)، وجداول ساعات العمل، وتوزيع 3 أطباء، و5 خدمات طبية، بالإضافة إلى إدخال 3 مستندات معرفية RAG جاهزة فورياً.
 
-To learn more about Next.js, take a look at the following resources:
+### 3. تشغيل ملقم التطوير
+```bash
+npm run dev
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+### 4. بناء نسخة الإنتاج الجاهزة للنشر
+```bash
+npm run build
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+### 5. تشغيل الفحوصات والتحقق من الجودة
+```bash
+npm run lint
+npx playwright test
+```
 
-## Deploy on Vercel
+---
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## 🩺 دليل تشغيل الديمو التجريبي (Demo Presentation Guide)
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+لعرض النظام أمام العملاء التجريبيين أو العيادة الأولى (Pilot Clinic):
+
+### الخطوة 1: لوحة الاستقبال (Reception Dashboard)
+* افتح الرابط: `http://localhost:3000/dashboard`.
+* ستعرض الواجهة قائمة حجوزات اليوم، وسجلات الحجوزات الواردة وقيد الانتظار ومخططات المصادر الإعلانية (Snapchat, Instagram, Google).
+
+### الخطوة 2: تهيئة وتخصيص إعدادات العيادة
+* انقر على زر **⚙️ إعدادات العيادة** في الزاوية اليسرى العليا، أو افتح الرابط: `http://localhost:3000/dashboard/settings`.
+* ستظهر لوحة التحكم المتجاوبة بستة تبويبات مستقلة:
+  1. **ملف العيادة:** لتخصيص الاسم والوصف وشعار العيادة.
+  2. **الفروع وأوقات العمل:** إضافة فروع جديدة كـ CRUD متكامل وتعديل ساعات العمل لكل فرع لكل يوم أسبوعياً.
+  3. **الخدمات الطبية:** إضافة وتحديث قائمة الكتالوج الطبي للخدمات وتحديد الأسعار والمدد الزمنية.
+  4. **الأطباء والطاقم:** تسجيل الأطباء والتخصصات وربطهم ديناميكياً بأكثر من فرع وأكثر من خدمة في واجهة واحدة.
+  5. **قاعدة المعرفة RAG:** تغذية وتدريب الذكاء الاصطناعي بأسئلة شائعة، وعروض، وسياسات العيادة.
+  6. **قنوات الاتصال والذكاء:** إدخال بيانات Meta Cloud API للواتساب، وتفعيل/إيقاف ردود الذكاء الاصطناعي الذاتية، وتحديث موجه النظام (System Prompt).
+
+### الخطوة 3: اختبار التدفق التلقائي للعميل (End-to-End Simulation)
+* يمكن اختبار الردود عبر الواتساب الفعلي عند ربط الحساب، أو فحص سيناريوهات الحجز المؤكد والتفاعل المباشر للتأكد من وصول بيانات الحجز إلى لوحة الاستقبال وتحديثها لحظياً للتحقق والتأكيد من قبل الموظف البشري.
