@@ -78,9 +78,9 @@ export async function POST(request: Request) {
     const clinic = await prisma.clinic.findUnique({
       where: { slug: clinicSlug },
       include: {
-        branches: true,
-        doctors: true,
-        services: true,
+        branches: { where: { status: "ACTIVE" } },
+        doctors: { where: { status: "ACTIVE" } },
+        services: { where: { status: "ACTIVE" } },
       },
     });
 
