@@ -6,8 +6,9 @@ import { ClinicProfileCard } from "@/components/dashboard/settings/ClinicProfile
 import { BranchTable } from "@/components/dashboard/settings/BranchTable";
 import { ServiceTable } from "@/components/dashboard/settings/ServiceTable";
 import { DoctorTable } from "@/components/dashboard/settings/DoctorTable";
+import { KnowledgeBaseTable } from "@/components/dashboard/settings/KnowledgeBaseTable";
 
-type SettingsTab = "profile" | "branches" | "services" | "doctors";
+type SettingsTab = "profile" | "branches" | "services" | "doctors" | "kb";
 
 export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState<SettingsTab>("profile");
@@ -104,6 +105,20 @@ export default function SettingsPage() {
               <span className="absolute bottom-0 left-0 right-0 h-[2px] bg-indigo-500 rounded-full" />
             )}
           </button>
+
+          <button
+            onClick={() => setActiveTab("kb")}
+            className={`pb-3 text-xs font-bold transition-all relative cursor-pointer flex-shrink-0 ${
+              activeTab === "kb"
+                ? "text-indigo-400"
+                : "text-zinc-500 hover:text-zinc-300"
+            }`}
+          >
+            📚 قاعدة المعرفة RAG
+            {activeTab === "kb" && (
+              <span className="absolute bottom-0 left-0 right-0 h-[2px] bg-indigo-500 rounded-full" />
+            )}
+          </button>
         </div>
 
         {/* Tab Contents */}
@@ -112,6 +127,7 @@ export default function SettingsPage() {
           {activeTab === "branches" && <BranchTable />}
           {activeTab === "services" && <ServiceTable />}
           {activeTab === "doctors" && <DoctorTable />}
+          {activeTab === "kb" && <KnowledgeBaseTable />}
         </div>
       </main>
     </div>
