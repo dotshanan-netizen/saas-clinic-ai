@@ -14,7 +14,7 @@ interface Service {
 }
 
 export function ServiceTable() {
-  const clinicSlug = "rival-clinic";
+  const clinicSlug = process.env.NEXT_PUBLIC_DEFAULT_CLINIC || "rival-clinic";
 
   const [services, setServices] = useState<Service[]>([]);
   const [loading, setLoading] = useState<boolean>(true);

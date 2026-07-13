@@ -10,65 +10,33 @@ interface Doctor {
   specialty: string;
   imageUrl: string | null;
   status: "ACTIVE" | "INACTIVE";
-  branches: { branchId: string }[];
-  services: { serviceId: string }[];
-}
-
-interface Branch {
-  id: string;
-  name: string;
-}
-
-interface Service {
-  id: string;
-  name: string;
+  branches: { branchId: string; branch?: { name: string } }[];
+  services: { serviceId: string; service?: { name: string } }[];
 }
 
 export function DoctorTable() {
-  const clinicSlug = "rival-clinic";
+  const clinicSlug = process.env.NEXT_PUBLIC_DEFAULT_CLINIC || "rival-clinic";
 
   const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  // Maps to resolve relation IDs to names
-  const [branchMap, setBranchMap] = useState<Map<string, string>>(new Map());
-  const [serviceMap, setServiceMap] = useState<Map<string, string>>(new Map());
-
   // Modal State
   const [editingDoctor, setEditingDoctor] = useState<Doctor | null>(null);
   const [isFormOpen, setIsFormOpen] = useState<boolean>(false);
 
-  // Fetch branches, services and doctors list
+  // Fetch doctors list (with nested relations fetched directly from server)
   const loadData = async () => {
     try {
       setLoading(true);
       setErrorMsg(null);
 
-      // Fetch all three datasets
-      const [branchesRes, servicesRes, doctorsRes] = await Promise.all([
-        fetch(`/api/clinic/branches?clinicSlug=${clinicSlug}`),
-        fetch(`/api/clinic/services?clinicSlug=${clinicSlug}`),
-        fetch(`/api/clinic/doctors?clinicSlug=${clinicSlug}`),
-      ]);
-
-      if (!branchesRes.ok || !servicesRes.ok || !doctorsRes.ok) {
-        throw new Error("فشل في تحميل بيانات الأطباء أو الفروع أو الخدمات");
+      const res = await fetch(`/api/clinic/doctors?clinicSlug=${clinicSlug}`);
+      if (!res.ok) {
+        throw new Error("فشل في تحميل بيانات الأطباء");
       }
 
-      const branchesData: Branch[] = await branchesRes.json();
-      const servicesData: Service[] = await servicesRes.json();
-      const doctorsData: Doctor[] = await doctorsRes.json();
-
-      // Build maps
-      const bMap = new Map<string, string>();
-      branchesData.forEach(b => bMap.set(b.id, b.name));
-      setBranchMap(bMap);
-
-      const sMap = new Map<string, string>();
-      servicesData.forEach(s => sMap.set(s.id, s.name));
-      setServiceMap(sMap);
-
+      const doctorsData: Doctor[] = await res.json();
       setDoctors(doctorsData);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "حدث خطأ غير متوقع";
@@ -179,7 +147,7 @@ export function DoctorTable() {
                         ) : (
                           d.branches.map(br => (
                             <span key={br.branchId} className="px-2 py-0.5 bg-zinc-800 text-zinc-300 rounded text-[10px]">
-                              {branchMap.get(br.branchId) || "تحميل..."}
+                              {br.branch?.name || br.branchId}
                             </span>
                           ))
                         )}
@@ -192,7 +160,7 @@ export function DoctorTable() {
                         ) : (
                           d.services.map(ser => (
                             <span key={ser.serviceId} className="px-2 py-0.5 bg-zinc-800/80 text-zinc-300 rounded text-[10px] border border-zinc-750">
-                              {serviceMap.get(ser.serviceId) || "تحميل..."}
+                              {ser.service?.name || ser.serviceId}
                             </span>
                           ))
                         )}

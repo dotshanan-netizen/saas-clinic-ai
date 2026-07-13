@@ -13,8 +13,16 @@ export class PrismaDoctorRepository implements IDoctorRepository {
     return prisma.doctor.findUnique({
       where: { id },
       include: {
-        branches: true,
-        services: true,
+        branches: {
+          include: {
+            branch: true,
+          },
+        },
+        services: {
+          include: {
+            service: true,
+          },
+        },
       },
     });
   }
@@ -27,8 +35,16 @@ export class PrismaDoctorRepository implements IDoctorRepository {
         },
       },
       include: {
-        branches: true,
-        services: true,
+        branches: {
+          include: {
+            branch: true,
+          },
+        },
+        services: {
+          include: {
+            service: true,
+          },
+        },
       },
       orderBy: {
         createdAt: "asc",

@@ -4,6 +4,8 @@ import { Prisma } from "../../../generated/prisma/index.js";
 import fs from "fs";
 import path from "path";
 
+const CLINIC_TIMEZONE = process.env.CLINIC_TIMEZONE || "Asia/Riyadh";
+
 // Type definition for a message in the conversation history
 interface ChatMessage {
   role: "user" | "assistant";

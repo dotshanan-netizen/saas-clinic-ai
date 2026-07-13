@@ -1,8 +1,8 @@
-import { Doctor, DoctorBranch, DoctorService, EntityStatus } from "@/generated/prisma";
+import { Doctor, DoctorBranch, DoctorService, EntityStatus, Branch, Service } from "@/generated/prisma";
 
 export interface IDoctorWithRelations extends Doctor {
-  branches: DoctorBranch[];
-  services: DoctorService[];
+  branches: (DoctorBranch & { branch?: Branch })[];
+  services: (DoctorService & { service?: Service })[];
 }
 
 export interface IDoctorRepository {

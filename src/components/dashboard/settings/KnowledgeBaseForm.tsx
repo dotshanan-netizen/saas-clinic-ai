@@ -18,7 +18,7 @@ interface KnowledgeBaseFormProps {
 }
 
 export function KnowledgeBaseForm({ item, onClose, onSaved }: KnowledgeBaseFormProps) {
-  const clinicSlug = "rival-clinic";
+  const clinicSlug = process.env.NEXT_PUBLIC_DEFAULT_CLINIC || "rival-clinic";
 
   const [saving, setSaving] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -40,6 +40,7 @@ export function KnowledgeBaseForm({ item, onClose, onSaved }: KnowledgeBaseFormP
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (saving) return;
     setSaving(true);
     setErrorMsg(null);
 
@@ -118,14 +119,20 @@ export function KnowledgeBaseForm({ item, onClose, onSaved }: KnowledgeBaseFormP
             <textarea
               value={content}
               onChange={(e) => setContent(e.target.value)}
+              maxLength={1500}
               rows={6}
               className="w-full px-4 py-2.5 bg-zinc-950 border border-zinc-800 focus:border-indigo-500 rounded-xl text-zinc-200 text-sm focus:outline-none transition-colors resize-none font-sans"
               placeholder="اكتب المعرفة هنا بوضوح وسلاسة. مثلاً: 'تبدأ العروض الموسمية لتنظيف البشرة في شهر أكتوبر وتستمر لـ 3 أشهر، وخصم 20٪ للدفع المسبق عبر الموقع'."
               required
             />
-            <span className="block text-[10px] text-zinc-500 mt-2">
-              💡 يقرأ المساعد الذكي هذا المحتوى تلقائياً للرد بدقة على تساؤلات المراجعين.
-            </span>
+            <div className="flex justify-between items-center mt-2">
+              <span className="block text-[10px] text-zinc-500">
+                💡 يقرأ المساعد الذكي هذا المحتوى تلقائياً للرد بدقة على تساؤلات المراجعين.
+              </span>
+              <span className="block text-[10px] text-zinc-400 font-mono">
+                {content.length} / 1500
+              </span>
+            </div>
           </div>
 
           {/* Error Message */}

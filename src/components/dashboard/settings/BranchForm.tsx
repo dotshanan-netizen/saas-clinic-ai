@@ -19,7 +19,7 @@ interface BranchFormProps {
 }
 
 export function BranchForm({ branch, onClose, onSaved }: BranchFormProps) {
-  const clinicSlug = "rival-clinic";
+  const clinicSlug = process.env.NEXT_PUBLIC_DEFAULT_CLINIC || "rival-clinic";
 
   const [saving, setSaving] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -50,6 +50,7 @@ export function BranchForm({ branch, onClose, onSaved }: BranchFormProps) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (saving) return;
     setSaving(true);
     setErrorMsg(null);
 

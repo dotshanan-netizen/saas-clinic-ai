@@ -83,7 +83,10 @@ export const UpsertKbSchema = z.object({
   id: z.string().optional(),
   clinicSlug: z.string().min(1),
   category: z.nativeEnum(KbCategory),
-  content: z.string().min(5, "يجب أن يكون المحتوى 5 حروف على الأقل"),
+  content: z
+    .string()
+    .min(5, "يجب أن يكون المحتوى 5 حروف على الأقل")
+    .max(1500, "يجب ألا يتجاوز محتوى المستند 1500 حرف لضمان ثبات التدريب المعرفي"),
 });
 
 export type UpsertKbDto = z.infer<typeof UpsertKbSchema>;

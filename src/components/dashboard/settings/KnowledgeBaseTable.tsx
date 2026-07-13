@@ -13,7 +13,7 @@ interface KBItem {
 }
 
 export function KnowledgeBaseTable() {
-  const clinicSlug = "rival-clinic";
+  const clinicSlug = process.env.NEXT_PUBLIC_DEFAULT_CLINIC || "rival-clinic";
 
   const [items, setItems] = useState<KBItem[]>([]);
   const [loading, setLoading] = useState<boolean>(true);

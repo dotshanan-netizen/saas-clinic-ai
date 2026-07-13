@@ -37,7 +37,7 @@ const DAYS_ORDER = [
 ];
 
 export function WorkingHoursEditor({ branchId, branchName, onClose }: WorkingHoursEditorProps) {
-  const clinicSlug = "rival-clinic";
+  const clinicSlug = process.env.NEXT_PUBLIC_DEFAULT_CLINIC || "rival-clinic";
 
   const [loading, setLoading] = useState<boolean>(true);
   const [saving, setSaving] = useState<boolean>(false);
@@ -111,6 +111,7 @@ export function WorkingHoursEditor({ branchId, branchName, onClose }: WorkingHou
   // Save changes
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (saving) return;
     setSaving(true);
     setErrorMsg(null);
     setSuccessMsg(null);
