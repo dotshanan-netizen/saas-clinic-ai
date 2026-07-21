@@ -1,9 +1,11 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { ConversationEngine } from "@/lib/domain/ConversationEngine";
+import crypto from "crypto";
 
 export async function POST(request: Request) {
   try {
+    const requestId = crypto.randomUUID();
     const body = await request.json();
     const { message, clientPhone, clinicSlug, source = "Simulator", action } = body;
 
@@ -44,7 +46,7 @@ export async function POST(request: Request) {
     }
 
     // 2. Call the shared message processor
-    const result = await ConversationEngine.processMessage(clinic, clientPhone, message, source);
+    const result = await ConversationEngine.processMessage(clinic, clientPhone, message, source, requestId);
 
     return NextResponse.json(result);
   } catch (error: unknown) {

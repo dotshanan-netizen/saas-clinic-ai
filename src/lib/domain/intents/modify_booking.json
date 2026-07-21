@@ -1,0 +1,17 @@
+{
+  "id": "modify_booking",
+  "name": "Modify Booking",
+  "description": "User requesting to modify an existing appointment (date, branch, doctor, service)",
+  "examples": [
+    "أبغى أغير موعدي",
+    "أبي أعدل الحجز",
+    "خليه فرع النرجس",
+    "أبغى أغير موعدي إلى الخميس",
+    "أبغى أغير الخدمة من بوتوكس إلى فيلر",
+    "أبغى أنقل الحجز لفرع جدة",
+    "أبغى أحول الموعد للدكتورة سارة"
+  ],
+  "entities": ["clientName", "clientPhone", "serviceName", "doctorName", "branchName", "timeSlot"],
+  "businessAction": "MODIFY_CONFIRMED_BOOKING",
+  "policy": "MODIFICATION_POLICY"
+}

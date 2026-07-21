@@ -5,18 +5,21 @@ import {
   validateBookingData,
   sanitizeAIValue,
   normalizeToOfficial,
+  extractSaudiPhone,
+  ExtractedBookingData,
 } from "@/lib/domain/types";
-
 export class BusinessEngine {
   static async processIntent(
     clinic: ClinicWithCatalog,
     clientPhone: string,
     userMessage: string,
     aiResult: AIClassificationResult,
-    source: string
-  ): Promise<{ finalResponse: string; bookingCreated: boolean; modifiedBookingData?: any }> {
+    source: string,
+    currentState: ExtractedBookingData
+  ): Promise<{ finalResponse: string; bookingCreated: boolean; bookingModified: boolean; modifiedBookingData?: ExtractedBookingData | null }> {
     let finalResponse = aiResult.response;
     let bookingCreated = false;
+    let bookingModified = false;
 
     // Sanitize all extracted booking fields from AI first
     const rawData = aiResult.bookingData || {
@@ -39,7 +42,7 @@ export class BusinessEngine {
 
     const modifiedBookingData = { ...sanitizedData };
 
-    if (aiResult.intent === "BookAppointment") {
+    if (aiResult.intent === "BookAppointment" || aiResult.intent === "ModifyBooking") {
       // 1. Controlled Merge Guard: Prevent AI from mutating unmentioned fields
       // Check if user explicitly mentioned a branch or service in their text
       const branchNames = clinic.branches.map((b) => b.name);
@@ -50,29 +53,30 @@ export class BusinessEngine {
       const userServiceMention = normalizeToOfficial(userMessage, serviceNames);
       const userDoctorMention = normalizeToOfficial(userMessage, doctorNames);
 
-      // If user did NOT mention a branch in their message, reject any AI-mutated branch change
-      if (!userBranchMention && sanitizedData.branchName) {
-        // Only keep if it matches user's text; otherwise don't let AI invent a branch
+      // If branch changed and user did NOT mention it in their message, revert to previous state
+      if (sanitizedData.branchName !== currentState.branchName) {
         const isBranchInText = branchNames.some((b) => userMessage.includes(b));
-        if (!isBranchInText) {
-          sanitizedData.branchName = null;
-          modifiedBookingData.branchName = null;
+        if (!userBranchMention && !isBranchInText) {
+          sanitizedData.branchName = currentState.branchName || null;
+          modifiedBookingData.branchName = currentState.branchName || null;
         }
       }
 
-      if (!userServiceMention && sanitizedData.serviceName) {
+      // If service changed and user did NOT mention it in their message, revert to previous state
+      if (sanitizedData.serviceName !== currentState.serviceName) {
         const isServiceInText = serviceNames.some((s) => userMessage.includes(s));
-        if (!isServiceInText) {
-          sanitizedData.serviceName = null;
-          modifiedBookingData.serviceName = null;
+        if (!userServiceMention && !isServiceInText) {
+          sanitizedData.serviceName = currentState.serviceName || null;
+          modifiedBookingData.serviceName = currentState.serviceName || null;
         }
       }
 
-      if (!userDoctorMention && sanitizedData.doctorName) {
+      // If doctor changed and user did NOT mention it in their message, revert to previous state
+      if (sanitizedData.doctorName !== currentState.doctorName) {
         const isDoctorInText = doctorNames.some((d) => userMessage.includes(d));
-        if (!isDoctorInText) {
-          sanitizedData.doctorName = null;
-          modifiedBookingData.doctorName = null;
+        if (!userDoctorMention && !isDoctorInText) {
+          sanitizedData.doctorName = currentState.doctorName || null;
+          modifiedBookingData.doctorName = currentState.doctorName || null;
         }
       }
 
@@ -86,37 +90,65 @@ export class BusinessEngine {
       if (validation.isValid) {
         const finalPhone = validation.normalizedPhone!;
 
-        // Check for duplicates
-        const existingBooking = await prisma.booking.findFirst({
-          where: {
-            clinicId: clinic.id,
-            clientPhone: finalPhone,
-            serviceName: validation.normalizedService!,
-            doctorName: validation.normalizedDoctor!,
-            branchName: validation.normalizedBranch!,
-            timeSlot: validation.cleanTimeSlot!,
-          },
-        });
+        // Check if there is an active booking to modify
+        const isModification = aiResult.intent === "ModifyBooking" || userMessage.match(/تغيير|تعديل|أغير|أعدل|خليه|بدل|غيرت/i);
+        let activeBooking = null;
+        if (isModification) {
+          activeBooking = await prisma.booking.findFirst({
+            where: {
+              clinicId: clinic.id,
+              clientPhone: finalPhone,
+              status: { in: ["PENDING", "CONFIRMED"] }
+            },
+            orderBy: { createdAt: "desc" }
+          });
+        }
 
-        if (!existingBooking) {
-          await prisma.booking.create({
+        if (activeBooking) {
+          await prisma.booking.update({
+            where: { id: activeBooking.id },
             data: {
-              clientName: validation.cleanName!,
+              serviceName: validation.normalizedService!,
+              doctorName: validation.normalizedDoctor!,
+              branchName: validation.normalizedBranch!,
+              timeSlot: validation.cleanTimeSlot!,
+            }
+          });
+          bookingModified = true;
+          finalResponse = `وصلني تعديل الحجز بنجاح 🌷\n\n✅ الاسم: ${validation.cleanName}\n✅ الجوال: ${finalPhone}\n✅ الخدمة: ${validation.normalizedService}\n✅ الطبيب: ${validation.normalizedDoctor}\n✅ الفرع: ${validation.normalizedBranch}\n✅ الوقت المفضل: ${validation.cleanTimeSlot}\n\nتم تحديث موعدك، وسيتواصل معك موظف الاستقبال للتأكيد النهائي. 🌸`;
+        } else {
+          // Check for duplicates
+          const existingBooking = await prisma.booking.findFirst({
+            where: {
+              clinicId: clinic.id,
               clientPhone: finalPhone,
               serviceName: validation.normalizedService!,
               doctorName: validation.normalizedDoctor!,
               branchName: validation.normalizedBranch!,
               timeSlot: validation.cleanTimeSlot!,
-              source: source,
-              clinicId: clinic.id,
-              status: "PENDING",
             },
           });
-          bookingCreated = true;
-          // Hard Guarantee: Only send success message if validation.isValid is true!
-          finalResponse = `وصلني طلب الحجز بنجاح 🌷\n\n✅ الاسم: ${validation.cleanName}\n✅ الجوال: ${finalPhone}\n✅ الخدمة: ${validation.normalizedService}\n✅ الطبيب: ${validation.normalizedDoctor}\n✅ الفرع: ${validation.normalizedBranch}\n✅ الوقت المفضل: ${validation.cleanTimeSlot}\n\nتم إرسال طلبك لموظف الاستقبال، وسيتواصل معك لتأكيد الموعد النهائي حسب التوفر. 🌸`;
-        } else {
-          finalResponse = `لدينا طلب حجز مُسجّل مسبقاً بنفس التفاصيل يا ${validation.cleanName} 🌷 تم إرسال طلبك بالفعل للاستقبال. إذا أردت إنشاء طلب جديد أو تعديل الحجز، أخبرني وسأبدأ معك طلبًا جديدًا.`;
+
+          if (!existingBooking) {
+            await prisma.booking.create({
+              data: {
+                clientName: validation.cleanName!,
+                clientPhone: finalPhone,
+                serviceName: validation.normalizedService!,
+                doctorName: validation.normalizedDoctor!,
+                branchName: validation.normalizedBranch!,
+                timeSlot: validation.cleanTimeSlot!,
+                source: source,
+                clinicId: clinic.id,
+                status: "PENDING",
+              },
+            });
+            bookingCreated = true;
+            // Hard Guarantee: Only send success message if validation.isValid is true!
+            finalResponse = `وصلني طلب الحجز بنجاح 🌷\n\n✅ الاسم: ${validation.cleanName}\n✅ الجوال: ${finalPhone}\n✅ الخدمة: ${validation.normalizedService}\n✅ الطبيب: ${validation.normalizedDoctor}\n✅ الفرع: ${validation.normalizedBranch}\n✅ الوقت المفضل: ${validation.cleanTimeSlot}\n\nتم إرسال طلبك لموظف الاستقبال، وسيتواصل معك لتأكيد الموعد النهائي حسب التوفر. 🌸`;
+          } else {
+            finalResponse = `لدينا طلب حجز مُسجّل مسبقاً بنفس التفاصيل يا ${validation.cleanName} 🌷 تم إرسال طلبك بالفعل للاستقبال. إذا أردت إنشاء طلب جديد أو تعديل الحجز، أخبرني وسأبدأ معك طلبًا جديدًا.`;
+          }
         }
       } else {
         // HARD GATE BLOCKED BOOKING: Ensure AI never claims booking succeeded
@@ -137,7 +169,34 @@ export class BusinessEngine {
         if (validation.missingFields.includes("الوقت المناسب")) modifiedBookingData.timeSlot = null;
       }
     } else if (aiResult.intent === "CancelAppointment") {
-      finalResponse = "سيتم تحويل طلب الإلغاء لموظف الاستقبال لخدمتك بشكل أفضل 🌷";
+      const extractedPhone = extractSaudiPhone(clientPhone);
+      const finalPhone = extractedPhone || clientPhone;
+      
+      const activeBooking = await prisma.booking.findFirst({
+        where: {
+          clinicId: clinic.id,
+          clientPhone: finalPhone,
+          status: { in: ["PENDING", "CONFIRMED"] }
+        },
+        orderBy: { createdAt: "desc" }
+      });
+
+      if (activeBooking) {
+        await prisma.booking.update({
+          where: { id: activeBooking.id },
+          data: { status: "CANCELLED" }
+        });
+        bookingModified = true;
+        finalResponse = `تم إلغاء حجزك بنجاح يا ${activeBooking.clientName} 🌷 تم إخطار الاستقبال بالإلغاء.`;
+      } else {
+        const hasDraft = currentState && (currentState.serviceName || currentState.branchName || currentState.timeSlot || currentState.clientName);
+        if (hasDraft) {
+          bookingModified = true;
+          finalResponse = "تم إلغاء طلب الحجز وإعادة تعيين الجلسة بنجاح 🌷 إذا كنت ترغب في البدء من جديد، أنا هنا لمساعدتك.";
+        } else {
+          finalResponse = "لا يوجد لديك حجز نشط حالياً لإلغائه 🌷 إذا كنت ترغب في حجز موعد جديد، أنا هنا لمساعدتك.";
+        }
+      }
     } else if (aiResult.intent === "Inquiry") {
       if (aiResult.requiresRag) {
         const { RAGPipeline } = await import("./RAGPipeline");
@@ -157,6 +216,6 @@ export class BusinessEngine {
       finalResponse = finalResponse.replace(/\s+/g, " ").trim();
     }
 
-    return { finalResponse, bookingCreated, modifiedBookingData };
+    return { finalResponse, bookingCreated, bookingModified, modifiedBookingData };
   }
 }

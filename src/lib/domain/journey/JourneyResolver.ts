@@ -4,6 +4,7 @@ export type JourneyStage =
   | "Evaluation"
   | "Decision"
   | "Booking"
+  | "Booking Management"
   | "Aftercare"
   | "Escalation";
 
@@ -16,6 +17,10 @@ export class JourneyResolver {
   ): JourneyStage {
     if (intentId === "human_takeover" || intentId === "complaint") {
       return "Escalation";
+    }
+
+    if (intentId === "modify_booking" || intentId === "cancel_booking") {
+      return "Booking Management";
     }
 
     if (intentId === "aftercare") {

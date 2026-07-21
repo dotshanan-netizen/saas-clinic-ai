@@ -1,0 +1,13 @@
+{
+  "id": "cancel_booking",
+  "name": "Cancel Booking",
+  "description": "User requesting to cancel an existing appointment",
+  "examples": [
+    "أبغى ألغي حجزي",
+    "إلغاء الموعد",
+    "كنسل الحجز"
+  ],
+  "entities": ["clientPhone"],
+  "businessAction": "CANCEL_CONFIRMED_BOOKING",
+  "policy": "CANCELLATION_POLICY"
+}

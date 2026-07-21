@@ -1,0 +1,14 @@
+{
+  "id": "medical_emergency",
+  "name": "Medical Emergency",
+  "description": "User reporting severe symptoms, shortness of breath, vascular discoloration, or acute post-procedure emergency",
+  "examples": [
+    "صار عندي ضيق تنفس بعد الجلسة",
+    "شفتي صار لونها أزرق بعد الفيلر",
+    "عندي نزيف شديد",
+    "عندي ألم شديد جدا لا يحتمل"
+  ],
+  "entities": ["symptom"],
+  "businessAction": "TRIGGER_HUMAN_TAKEOVER",
+  "policy": "EMERGENCY_POLICY"
+}

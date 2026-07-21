@@ -5,6 +5,7 @@ import path from "path";
 export type AIIntent = 
   | "BookAppointment" 
   | "CancelAppointment" 
+  | "ModifyBooking"
   | "Inquiry" 
   | "Complaint" 
   | "HumanTakeover"
@@ -16,6 +17,11 @@ export interface AIClassificationResult {
   humanTakeover: boolean;
   requiresRag: boolean;
   bookingData: ExtractedBookingData;
+  usage?: {
+    promptTokens: number;
+    completionTokens: number;
+    totalTokens: number;
+  } | null;
 }
 
 export class AIProvider {
@@ -89,10 +95,15 @@ ${doctorsMappingStr}
 - إذا سأل العميل عن المواعيد المتاحة، فلا تدّعي أنك تستطيعين التحقق من جدول المواعيد مباشرة. اطلبي منه اليوم أو الوقت المفضل إذا لم يذكره، ثم أوضحي أن فريق الاستقبال سيؤكد الموعد النهائي حسب التوفر. وإذا كان العميل قد ذكر بالفعل الوقت أو اليوم المفضل، فلا تطلبيه مرة أخرى، واكتفي بإبلاغه أن فريق الاستقبال سيؤكد التوفر.
 - عند طلب الاسم والجوال لأول مرة، استخدمي صيغة لطيفة ومباشرة، مثلاً: "ممتاز 🌷 حتى أتمكن من حجز موعد لك مع [الطبيب] لـ [الخدمة]، أحتاج: الاسم الكامل، ورقم الجوال."
 
+- إذا طلب المستخدم إلغاء حجز قائم أو إلغاء طلب الحجز الحالي (بما في ذلك التعبيرات الصريحة أو الضمنية أو اللهجات أو الأخطاء الإملائية مثل: "ألغي حجزي"، "كنسل"، "احذف الموعد"، "احذفه لو سمحت"، "الغي الموعد"، "خلاص بلاش"، "غيرت رأيي"، "مو محتاج"، "خلها بعدين"، "ما أبي أكمل"، "انس الموضوع"، "طنش"، "مو ضروري"، "فلتلغ الموعد"، "مش عاوز احجز خلاص"، "شيل الحجز يا طيب"، "تراجعت عن الحجز"، "ألقيه"، "كنسله"، "الغيي الحجز"، "الغي")، فاجعلي النية دائماً "CancelAppointment" (ولا تجعليها HumanTakeover أو Complaint).
+- هام جداً: إذا قال المستخدم "خلاص شكراً" أو "شكراً خلاص" أو "بلاش خلاص" أو "ما ودي خلاص" أثناء عملية جمع بيانات الحجز، فيجب تصنيف النية كـ "CancelAppointment" فوراً (لأنها تعني التراجع وإلغاء الجلسة).
+- كلمات الشكر البسيطة دون كلمة "خلاص" (مثل: "شكراً"، "تسلم"، "يعطيك العافية") هي مجرد استفسار أو إنهاء ودود للمحادثة (Inquiry) ولا تصنفيها كـ "CancelAppointment" أبداً.
+- إذا طلب المستخدم تعديل/تغيير تفاصيل حجز قائم (مثل الفرع، الخدمة، الطبيب، أو الموعد)، اجعلي النية "ModifyBooking" وقومي بتحديث الحقول المطلوبة في "bookingData" مع الاحتفاظ بباقي التفاصيل كما هي في (Current State).
+
 - يجب عليك تحديد نية المستخدم بدقة وإرجاع رد بصيغة JSON فقط:
 {
   "response": "ردك باللغة العربية",
-  "intent": "BookAppointment | CancelAppointment | Inquiry | Complaint | HumanTakeover | Unknown",
+  "intent": "BookAppointment | CancelAppointment | ModifyBooking | Inquiry | Complaint | HumanTakeover | Unknown",
   "humanTakeover": false,
   "requiresRag": false,
   "bookingData": {
@@ -111,6 +122,7 @@ ${doctorsMappingStr}
 `;
 
     let rawJson = "";
+    let usage: any = null;
 
     try {
       if (geminiKey) {
@@ -140,6 +152,13 @@ ${doctorsMappingStr}
         
         const data = await response.json();
         rawJson = data.candidates[0].content.parts[0].text;
+        if (data.usageMetadata) {
+          usage = {
+            promptTokens: data.usageMetadata.promptTokenCount || 0,
+            completionTokens: data.usageMetadata.candidatesTokenCount || 0,
+            totalTokens: data.usageMetadata.totalTokenCount || 0
+          };
+        }
       } else {
         throw new Error("No Gemini key");
       }
@@ -169,6 +188,13 @@ ${doctorsMappingStr}
 
       const data = await response.json();
       rawJson = data.choices[0].message.content;
+      if (data.usage) {
+        usage = {
+          promptTokens: data.usage.prompt_tokens || 0,
+          completionTokens: data.usage.completion_tokens || 0,
+          totalTokens: data.usage.total_tokens || 0
+        };
+      }
     }
 
     const parsed = JSON.parse(rawJson);
@@ -180,7 +206,8 @@ ${doctorsMappingStr}
       requiresRag: !!parsed.requiresRag,
       bookingData: parsed.bookingData || {
         clientName: null, clientPhone: null, serviceName: null, doctorName: null, branchName: null, timeSlot: null
-      }
+      },
+      usage
     };
   }
 
