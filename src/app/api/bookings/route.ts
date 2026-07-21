@@ -43,9 +43,9 @@ export async function POST(request: Request) {
 
     // Action 1: Update status of an existing booking
     if (action === "updateStatus") {
-      if (!bookingId || !status) {
+      if (!bookingId || !status || !clinicSlug) {
         return NextResponse.json(
-          { error: "Missing required fields: bookingId, status" },
+          { error: "Missing required fields: bookingId, status, clinicSlug" },
           { status: 400 }
         );
       }
@@ -63,14 +63,25 @@ export async function POST(request: Request) {
         CANCELLED: [],
       };
 
-      // Fetch current booking to know current state
-      const currentBooking = await prisma.booking.findUnique({
-        where: { id: bookingId },
+      // ── Multi-Tenancy Guard ──────────────────────────────────────────────
+      // Resolve the clinic first, then fetch the booking scoped to that clinic.
+      // This prevents a tenant from modifying another clinic's booking by ID.
+      const ownerClinic = await prisma.clinic.findUnique({
+        where: { slug: clinicSlug },
+      });
+
+      if (!ownerClinic) {
+        return NextResponse.json({ error: "Clinic not found" }, { status: 404 });
+      }
+
+      // Fetch booking scoped to the authenticated clinic (clinicId guard)
+      const currentBooking = await prisma.booking.findFirst({
+        where: { id: bookingId, clinicId: ownerClinic.id },
       });
 
       if (!currentBooking) {
         return NextResponse.json(
-          { error: "Booking not found" },
+          { error: "Booking not found or does not belong to this clinic" },
           { status: 404 }
         );
       }
@@ -93,6 +104,7 @@ export async function POST(request: Request) {
         );
       }
 
+      // Safe: update is scoped to verified booking owned by authenticated clinic
       const updatedBooking = await prisma.booking.update({
         where: { id: bookingId },
         data: { status },
