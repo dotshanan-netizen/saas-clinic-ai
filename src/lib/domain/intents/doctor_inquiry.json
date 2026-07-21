@@ -1,0 +1,14 @@
+{
+  "id": "doctor_inquiry",
+  "name": "Doctor Inquiry",
+  "description": "User asking about doctors, specialists, or doctor availability",
+  "examples": [
+    "مين الأطباء المتاحة؟",
+    "عندكم دكتورة جلدية؟",
+    "مين عندكم للفيـلر؟",
+    "مين دكتور تنظيف البشرة؟"
+  ],
+  "entities": ["doctorName", "serviceName"],
+  "businessAction": "NONE",
+  "policy": "DOCTOR_POLICY"
+}

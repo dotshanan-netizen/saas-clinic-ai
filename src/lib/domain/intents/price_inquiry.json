@@ -1,0 +1,16 @@
+{
+  "id": "price_inquiry",
+  "name": "Price Inquiry",
+  "description": "User asking about cost, prices, discounts, or offer packages",
+  "examples": [
+    "بكم؟",
+    "كم السعر؟",
+    "وش أسعاركم؟",
+    "غالي؟",
+    "عندكم عروض؟",
+    "كم تكلف الجلسة؟"
+  ],
+  "entities": ["serviceName"],
+  "businessAction": "NONE",
+  "policy": "PRICE_POLICY"
+}

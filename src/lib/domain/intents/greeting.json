@@ -1,0 +1,16 @@
+{
+  "id": "greeting",
+  "name": "Greeting",
+  "description": "User greeting or opening phrase",
+  "examples": [
+    "سلام",
+    "السلام عليكم",
+    "مرحبا",
+    "أهلا",
+    "مساء الخير",
+    "صباح الخير"
+  ],
+  "entities": [],
+  "businessAction": "NONE",
+  "policy": "GREETING_POLICY"
+}

@@ -1,0 +1,15 @@
+{
+  "id": "booking",
+  "name": "Booking",
+  "description": "User requesting to book an appointment or providing booking details",
+  "examples": [
+    "أبغى أحجز موعد",
+    "عاوز أحجز تنظيف بشرة",
+    "ابي احجز مع دكتورة نجلاء",
+    "احجزلي بكرة الساعة 6",
+    "خلاص تمام اعتمد الحجز"
+  ],
+  "entities": ["clientName", "clientPhone", "serviceName", "doctorName", "branchName", "timeSlot"],
+  "businessAction": "CREATE_OR_UPDATE_BOOKING_DRAFT",
+  "policy": "BOOKING_POLICY"
+}

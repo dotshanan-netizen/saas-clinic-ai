@@ -1,0 +1,15 @@
+{
+  "id": "service_inquiry",
+  "name": "Service Inquiry",
+  "description": "User asking about available treatments, procedures, or service details",
+  "examples": [
+    "وش الخدمات المتاحة؟",
+    "عندكم ليزر؟",
+    "وش أنواع تنظيف البشرة؟",
+    "عندكم تنظيف بشرة؟",
+    "عندكم فيلر وبوتكس؟"
+  ],
+  "entities": ["serviceName"],
+  "businessAction": "NONE",
+  "policy": "SERVICE_POLICY"
+}

@@ -1,0 +1,14 @@
+{
+  "id": "human_takeover",
+  "name": "Human Takeover",
+  "description": "User requesting human agent or presenting a sensitive complaint",
+  "examples": [
+    "أبغى أكلم موظف بشر",
+    "حولني لخدمة العملاء",
+    "عندي شكوى شديدة",
+    "أبى مدير العيادة"
+  ],
+  "entities": [],
+  "businessAction": "TRIGGER_HUMAN_TAKEOVER",
+  "policy": "HUMAN_POLICY"
+}

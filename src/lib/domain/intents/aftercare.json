@@ -1,0 +1,14 @@
+{
+  "id": "aftercare",
+  "name": "Aftercare Inquiry",
+  "description": "User asking for instructions or guidance after a procedure",
+  "examples": [
+    "متى أقدر أحط مكياج؟",
+    "متى أغسل وجهي بعد الفيلر؟",
+    "عندي احمرار بسيط بعد التنظيف هل طبيعي؟",
+    "وش أستخدم بعد الجلسة؟"
+  ],
+  "entities": ["serviceName"],
+  "businessAction": "NONE",
+  "policy": "AFTERCARE_POLICY"
+}
