@@ -1,3 +1,16 @@
+/**
+ * ⚠️  INTERNAL REPOSITORY — SYSTEM ADMINISTRATION ONLY
+ *
+ * This repository is NOT exposed to any public-facing API.
+ * It is used exclusively by authenticated admin Dashboard operations
+ * where the caller has already been verified as a clinic administrator.
+ *
+ * SECURITY NOTICE:
+ * - Methods like findById(), update(), delete() operate by entity ID without clinicId scope.
+ * - Do NOT use this repository from any public API route or webhook handler.
+ * - Any new usage must be reviewed and must include caller-side clinicId verification.
+ * - Future enforcement of clinicId in all write methods is tracked as a post-MVP improvement.
+ */
 import { IKnowledgeBaseRepository } from "../interfaces/IKnowledgeBaseRepository";
 import { KnowledgeBase, KbCategory } from "@/generated/prisma";
 import { prisma } from "@/lib/db";
