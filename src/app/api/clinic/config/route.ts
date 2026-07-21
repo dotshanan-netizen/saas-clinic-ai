@@ -8,14 +8,13 @@ const clinicService = new ClinicService(clinicRepository);
 
 export async function GET(req: NextRequest) {
   try {
-    const { searchParams } = new URL(req.url);
-    const clinicSlug = searchParams.get("clinicSlug");
+    const tenantId = req.headers.get("x-tenant-id");
 
-    if (!clinicSlug) {
-      return NextResponse.json({ error: "Required parameter 'clinicSlug' is missing" }, { status: 400 });
+    if (!tenantId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const profile = await clinicService.getClinicProfile(clinicSlug);
+    const profile = await clinicService.getClinicProfileById(tenantId);
     return NextResponse.json(profile);
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Internal Server Error";
@@ -33,8 +32,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Validation failed", details: result.error.format() }, { status: 400 });
     }
 
+    const tenantId = req.headers.get("x-tenant-id");
+
+    if (!tenantId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const { clinicSlug, ...dto } = result.data;
-    const updatedProfile = await clinicService.updateClinicConfig(clinicSlug, {
+    const updatedProfile = await clinicService.updateClinicConfigById(tenantId, {
       clinicSlug,
       ...dto,
     });

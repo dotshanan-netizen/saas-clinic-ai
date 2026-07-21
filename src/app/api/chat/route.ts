@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { processChatMessage } from "@/lib/chat-processor";
+import { ConversationEngine } from "@/lib/domain/ConversationEngine";
 
 export async function POST(request: Request) {
   try {
@@ -44,7 +44,7 @@ export async function POST(request: Request) {
     }
 
     // 2. Call the shared message processor
-    const result = await processChatMessage(clinic, clientPhone, message, source);
+    const result = await ConversationEngine.processMessage(clinic, clientPhone, message, source);
 
     return NextResponse.json(result);
   } catch (error: unknown) {

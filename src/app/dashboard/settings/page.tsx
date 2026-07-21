@@ -7,9 +7,9 @@ import { BranchTable } from "@/components/dashboard/settings/BranchTable";
 import { ServiceTable } from "@/components/dashboard/settings/ServiceTable";
 import { DoctorTable } from "@/components/dashboard/settings/DoctorTable";
 import { KnowledgeBaseTable } from "@/components/dashboard/settings/KnowledgeBaseTable";
-import { WhatsappAiSettings } from "@/components/dashboard/settings/WhatsappAiSettings";
+import { IntegrationCenter } from "@/components/dashboard/settings/IntegrationCenter";
 
-type SettingsTab = "profile" | "branches" | "services" | "doctors" | "kb" | "whatsapp-ai";
+type SettingsTab = "profile" | "branches" | "services" | "doctors" | "kb" | "integrations";
 
 export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState<SettingsTab>("profile");
@@ -26,7 +26,7 @@ export default function SettingsPage() {
             <h1 className="text-xl font-bold bg-gradient-to-r from-indigo-400 to-purple-200 bg-clip-text text-transparent">
               إعدادات المنصة والعيادة – Settings
             </h1>
-            <p className="text-xs text-zinc-400">تخصيص الملف التعريفي، الفروع، الخدمات، الأطباء، وسلوك المساعد الذكي</p>
+            <p className="text-xs text-zinc-400">تخصيص الملف التعريفي، الفروع، الخدمات، الأطباء، والتكاملات البرمجية</p>
           </div>
         </div>
 
@@ -122,15 +122,15 @@ export default function SettingsPage() {
           </button>
 
           <button
-            onClick={() => setActiveTab("whatsapp-ai")}
+            onClick={() => setActiveTab("integrations")}
             className={`pb-3 text-xs font-bold transition-all relative cursor-pointer flex-shrink-0 ${
-              activeTab === "whatsapp-ai"
+              activeTab === "integrations"
                 ? "text-indigo-400"
                 : "text-zinc-500 hover:text-zinc-300"
             }`}
           >
-            💬 قنوات الاتصال والذكاء
-            {activeTab === "whatsapp-ai" && (
+            🔌 مركز التكاملات (Integrations)
+            {activeTab === "integrations" && (
               <span className="absolute bottom-0 left-0 right-0 h-[2px] bg-indigo-500 rounded-full" />
             )}
           </button>
@@ -143,7 +143,7 @@ export default function SettingsPage() {
           {activeTab === "services" && <ServiceTable />}
           {activeTab === "doctors" && <DoctorTable />}
           {activeTab === "kb" && <KnowledgeBaseTable />}
-          {activeTab === "whatsapp-ai" && <WhatsappAiSettings />}
+          {activeTab === "integrations" && <IntegrationCenter />}
         </div>
       </main>
     </div>

@@ -15,6 +15,14 @@ export class ClinicService {
     return this.sanitizeClinic(clinic);
   }
 
+  async getClinicProfileById(id: string): Promise<Omit<Clinic, "whatsappToken" | "whatsappVerifyToken"> & { hasWhatsappToken: boolean }> {
+    const clinic = await this.clinicRepository.findById(id);
+    if (!clinic) {
+      throw new Error(`Clinic not found with ID: ${id}`);
+    }
+    return this.sanitizeClinic(clinic);
+  }
+
   async updateClinicConfig(
     slug: string,
     dto: UpdateClinicConfigDto
@@ -22,6 +30,47 @@ export class ClinicService {
     const clinic = await this.clinicRepository.findBySlug(slug);
     if (!clinic) {
       throw new Error(`Clinic not found with slug: ${slug}`);
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const updateData: any = {
+      name: dto.name,
+      logoUrl: dto.logoUrl,
+      description: dto.description,
+      contactPhone: dto.contactPhone,
+      operatingHours: dto.operatingHours,
+      welcomeMessage: dto.welcomeMessage,
+      customPrompt: dto.customPrompt,
+      whatsappPhoneId: dto.whatsappPhoneId,
+      whatsappWabaId: dto.whatsappWabaId,
+      isAiActive: dto.isAiActive,
+    };
+
+    // If token is updated, encrypt it
+    if (dto.whatsappToken) {
+      const { encryptedData, iv, authTag } = encrypt(dto.whatsappToken);
+      updateData.whatsappToken = `${iv}:${authTag}:${encryptedData}`;
+    }
+
+    if (dto.whatsappVerifyToken) {
+      updateData.whatsappVerifyToken = dto.whatsappVerifyToken;
+    }
+
+    const updatedClinic = await this.clinicRepository.update(clinic.id, updateData);
+
+    // Publish config update event
+    DomainEventBus.publish(new ClinicConfigUpdatedEvent(clinic.id));
+
+    return this.sanitizeClinic(updatedClinic);
+  }
+
+  async updateClinicConfigById(
+    id: string,
+    dto: UpdateClinicConfigDto
+  ): Promise<Omit<Clinic, "whatsappToken" | "whatsappVerifyToken"> & { hasWhatsappToken: boolean }> {
+    const clinic = await this.clinicRepository.findById(id);
+    if (!clinic) {
+      throw new Error(`Clinic not found with ID: ${id}`);
     }
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
