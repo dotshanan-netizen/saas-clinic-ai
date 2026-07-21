@@ -1,6 +1,11 @@
 import { prisma } from "@/lib/db";
 import { AIClassificationResult } from "../infrastructure/ai/AIProvider";
-import { extractSaudiPhone, normalizeToOfficial, ClinicWithCatalog } from "@/lib/domain/types";
+import {
+  ClinicWithCatalog,
+  validateBookingData,
+  sanitizeAIValue,
+  normalizeToOfficial,
+} from "@/lib/domain/types";
 
 export class BusinessEngine {
   static async processIntent(
@@ -12,100 +17,126 @@ export class BusinessEngine {
   ): Promise<{ finalResponse: string; bookingCreated: boolean; modifiedBookingData?: any }> {
     let finalResponse = aiResult.response;
     let bookingCreated = false;
-    const modifiedBookingData = { ...aiResult.bookingData };
+
+    // Sanitize all extracted booking fields from AI first
+    const rawData = aiResult.bookingData || {
+      clientName: null,
+      clientPhone: null,
+      serviceName: null,
+      doctorName: null,
+      branchName: null,
+      timeSlot: null,
+    };
+
+    const sanitizedData = {
+      clientName: sanitizeAIValue(rawData.clientName),
+      clientPhone: sanitizeAIValue(rawData.clientPhone),
+      serviceName: sanitizeAIValue(rawData.serviceName),
+      doctorName: sanitizeAIValue(rawData.doctorName),
+      branchName: sanitizeAIValue(rawData.branchName),
+      timeSlot: sanitizeAIValue(rawData.timeSlot),
+    };
+
+    const modifiedBookingData = { ...sanitizedData };
 
     if (aiResult.intent === "BookAppointment") {
-      const data = aiResult.bookingData;
-      
-      // Attempt to normalize
+      // 1. Controlled Merge Guard: Prevent AI from mutating unmentioned fields
+      // Check if user explicitly mentioned a branch or service in their text
+      const branchNames = clinic.branches.map((b) => b.name);
       const serviceNames = clinic.services.map((s) => s.name);
       const doctorNames = clinic.doctors.map((d) => d.name);
-      const branchNames = clinic.branches.map((b) => b.name);
 
-      const normalizedService = normalizeToOfficial(data.serviceName, serviceNames);
-      const normalizedDoctor = normalizeToOfficial(data.doctorName, doctorNames) || "غير محدد";
-      const normalizedBranch = normalizeToOfficial(data.branchName, branchNames);
+      const userBranchMention = normalizeToOfficial(userMessage, branchNames);
+      const userServiceMention = normalizeToOfficial(userMessage, serviceNames);
+      const userDoctorMention = normalizeToOfficial(userMessage, doctorNames);
 
-      const hasName = data.clientName && data.clientName.trim().length > 1;
-      
-      console.log(`[DEBUG-PHONE] Input data.clientPhone: '${data.clientPhone}'`);
-      console.log(`[DEBUG-PHONE] Fallback clientPhone: '${clientPhone}'`);
-      console.log(`[DEBUG-PHONE] Passed to extractSaudiPhone: '${data.clientPhone || clientPhone}'`);
-      
-      const extractedPhone = extractSaudiPhone(data.clientPhone || clientPhone);
-      const isPhoneValid = extractedPhone !== null;
-      
-      console.log(`[DEBUG-PHONE] Extracted Phone: '${extractedPhone}'`);
-      console.log(`[DEBUG-PHONE] isPhoneValid: ${isPhoneValid}`);
+      // If user did NOT mention a branch in their message, reject any AI-mutated branch change
+      if (!userBranchMention && sanitizedData.branchName) {
+        // Only keep if it matches user's text; otherwise don't let AI invent a branch
+        const isBranchInText = branchNames.some((b) => userMessage.includes(b));
+        if (!isBranchInText) {
+          sanitizedData.branchName = null;
+          modifiedBookingData.branchName = null;
+        }
+      }
 
-      // Business Rule: AI believes it can book, but we enforce strict checks
-      if (hasName && isPhoneValid && normalizedService && normalizedBranch && data.timeSlot) {
-        
-        const finalPhone = extractedPhone!;
+      if (!userServiceMention && sanitizedData.serviceName) {
+        const isServiceInText = serviceNames.some((s) => userMessage.includes(s));
+        if (!isServiceInText) {
+          sanitizedData.serviceName = null;
+          modifiedBookingData.serviceName = null;
+        }
+      }
+
+      if (!userDoctorMention && sanitizedData.doctorName) {
+        const isDoctorInText = doctorNames.some((d) => userMessage.includes(d));
+        if (!isDoctorInText) {
+          sanitizedData.doctorName = null;
+          modifiedBookingData.doctorName = null;
+        }
+      }
+
+      // 2. Execute Central Validation Gate
+      const validation = validateBookingData(sanitizedData, clientPhone, clinic);
+
+      console.log(`[ValidationGate] isValid: ${validation.isValid}`);
+      console.log(`[ValidationGate] Missing: ${validation.missingFields.join(", ")}`);
+      console.log(`[ValidationGate] CleanName: '${validation.cleanName}'`);
+
+      if (validation.isValid) {
+        const finalPhone = validation.normalizedPhone!;
 
         // Check for duplicates
         const existingBooking = await prisma.booking.findFirst({
           where: {
             clinicId: clinic.id,
             clientPhone: finalPhone,
-            serviceName: normalizedService,
-            doctorName: normalizedDoctor,
-            branchName: normalizedBranch,
-            timeSlot: data.timeSlot,
+            serviceName: validation.normalizedService!,
+            doctorName: validation.normalizedDoctor!,
+            branchName: validation.normalizedBranch!,
+            timeSlot: validation.cleanTimeSlot!,
           },
         });
 
         if (!existingBooking) {
           await prisma.booking.create({
             data: {
-              clientName: data.clientName!,
+              clientName: validation.cleanName!,
               clientPhone: finalPhone,
-              serviceName: normalizedService,
-              doctorName: normalizedDoctor,
-              branchName: normalizedBranch,
-              timeSlot: data.timeSlot,
+              serviceName: validation.normalizedService!,
+              doctorName: validation.normalizedDoctor!,
+              branchName: validation.normalizedBranch!,
+              timeSlot: validation.cleanTimeSlot!,
               source: source,
               clinicId: clinic.id,
               status: "PENDING",
             },
           });
           bookingCreated = true;
-          // Override finalResponse so the AI's hallucination is ignored!
-          finalResponse = `وصلني طلب الحجز بنجاح 🌷\n\n✅ الاسم: ${data.clientName}\n✅ الجوال: ${finalPhone}\n✅ الخدمة: ${normalizedService}\n✅ الطبيب: ${normalizedDoctor}\n✅ الفرع: ${normalizedBranch}\n✅ الوقت المفضل: ${data.timeSlot}\n\nتم إرسال طلبك لموظف الاستقبال، وسيتواصل معك لتأكيد الموعد النهائي حسب التوفر. 🌸`;
+          // Hard Guarantee: Only send success message if validation.isValid is true!
+          finalResponse = `وصلني طلب الحجز بنجاح 🌷\n\n✅ الاسم: ${validation.cleanName}\n✅ الجوال: ${finalPhone}\n✅ الخدمة: ${validation.normalizedService}\n✅ الطبيب: ${validation.normalizedDoctor}\n✅ الفرع: ${validation.normalizedBranch}\n✅ الوقت المفضل: ${validation.cleanTimeSlot}\n\nتم إرسال طلبك لموظف الاستقبال، وسيتواصل معك لتأكيد الموعد النهائي حسب التوفر. 🌸`;
         } else {
-          // Override AI response for duplicates
-          finalResponse = `لدينا طلب حجز مُسجّل مسبقاً بنفس التفاصيل يا ${data.clientName} 🌷 تم إرسال طلبك بالفعل للاستقبال. إذا أردت إنشاء طلب جديد أو تعديل الحجز، أخبرني وسأبدأ معك طلبًا جديدًا.`;
+          finalResponse = `لدينا طلب حجز مُسجّل مسبقاً بنفس التفاصيل يا ${validation.cleanName} 🌷 تم إرسال طلبك بالفعل للاستقبال. إذا أردت إنشاء طلب جديد أو تعديل الحجز، أخبرني وسأبدأ معك طلبًا جديدًا.`;
         }
       } else {
-        // Business Rule: The Validation Wall blocked the booking.
-        // We must override the AI's response if it hallucinated completion, or if the phone is invalid.
-        const isPhoneRejectionHallucination = isPhoneValid && finalResponse.match(/غير صحيح|10 أرقام/i);
+        // HARD GATE BLOCKED BOOKING: Ensure AI never claims booking succeeded
+        const isHallucinatedSuccess = finalResponse.match(/تم|نجاح|ارسال|رفع|وصلني|حجز/i);
 
-        if (data.clientPhone && !isPhoneValid) {
-          finalResponse = "رقم الجوال يبدو غير صحيح. أرجو إرسال رقم سعودي يبدأ بـ 05 ويتكون من 10 أرقام 🌷";
-        } else if (isPhoneRejectionHallucination || finalResponse.match(/تم|نجاح|ارسال|رفع|حجز/i)) {
-          const missing = [];
-          if (!hasName) missing.push("الاسم");
-          if (!isPhoneValid) missing.push("رقم الجوال الصحيح");
-          if (!normalizedService) missing.push("الخدمة المطلوبة");
-          if (!normalizedBranch) missing.push("الفرع المفضل");
-          if (!data.timeSlot) missing.push("الوقت المناسب");
-          
-          if (missing.length > 0) {
-            finalResponse = `عذراً، حتى أتمكن من تأكيد الحجز، لا يزال ينقصنا معرفة: ${missing.join(" و ")} 🌷`;
-          }
+        if (sanitizedData.clientPhone && !validation.normalizedPhone) {
+          finalResponse =
+            "رقم الجوال يبدو غير صحيح. أرجو إرسال رقم سعودي يبدأ بـ 05 ويتكون من 10 أرقام 🌷";
+        } else if (isHallucinatedSuccess || validation.missingFields.length > 0) {
+          finalResponse = `عذراً، حتى أتمكن من تأكيد الحجز، لا يزال ينقصنا معرفة: ${validation.missingFields.join(" و ")} 🌷`;
         }
-        
-        // Nullify invalid data so ConversationEngine doesn't save it
-        if (!hasName) modifiedBookingData.clientName = null;
-        if (!isPhoneValid) modifiedBookingData.clientPhone = null;
-        if (!normalizedService) modifiedBookingData.serviceName = null;
-        if (!normalizedBranch) modifiedBookingData.branchName = null;
-        // timeSlot is implicitly validated if present
+
+        // Nullify missing fields in DTO
+        if (validation.missingFields.includes("الاسم")) modifiedBookingData.clientName = null;
+        if (validation.missingFields.includes("رقم الجوال الصحيح")) modifiedBookingData.clientPhone = null;
+        if (validation.missingFields.includes("الخدمة المطلوبة")) modifiedBookingData.serviceName = null;
+        if (validation.missingFields.includes("الفرع المفضل")) modifiedBookingData.branchName = null;
+        if (validation.missingFields.includes("الوقت المناسب")) modifiedBookingData.timeSlot = null;
       }
-      // If AI failed to gather all data, and didn't hallucinate, we just return the AI's question back to user.
     } else if (aiResult.intent === "CancelAppointment") {
-      // Future logic: lookup booking and cancel
       finalResponse = "سيتم تحويل طلب الإلغاء لموظف الاستقبال لخدمتك بشكل أفضل 🌷";
     } else if (aiResult.intent === "Inquiry") {
       if (aiResult.requiresRag) {
@@ -119,7 +150,7 @@ export class BusinessEngine {
       finalResponse = "تم تحويل المحادثة لموظف الاستقبال. سيتم الرد عليك في أقرب وقت ممكن. 👩‍💻";
     }
 
-    // Filter out internal testing data from the final response
+    // Clean internal test tags from final response
     if (finalResponse) {
       finalResponse = finalResponse.replace(/\s*E2E\s*/gi, " ");
       finalResponse = finalResponse.replace(/\s*التجريبي\s*/g, " ");

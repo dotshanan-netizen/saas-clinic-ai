@@ -35,11 +35,13 @@ export class ConversationEngine {
     };
     history.push(userMsg);
 
-    // Reconstruct current booking state safely (avoiding null overwrites)
+    // Reconstruct current booking state safely (avoiding null/fake string overwrites)
     const currentState: any = {
       clientName: null, clientPhone: null, serviceName: null, doctorName: null, branchName: null, timeSlot: null
     };
     
+    const { sanitizeAIValue } = require("@/lib/domain/types");
+
     for (const msg of history) {
       if (msg.sessionReset) {
         // Reset booking details but keep client identity
@@ -50,8 +52,9 @@ export class ConversationEngine {
       }
       if (msg.role === "assistant" && msg.bookingData) {
         for (const key of Object.keys(msg.bookingData)) {
-          if (msg.bookingData[key as keyof typeof msg.bookingData]) {
-            currentState[key] = msg.bookingData[key as keyof typeof msg.bookingData];
+          const val = sanitizeAIValue(msg.bookingData[key as keyof typeof msg.bookingData]);
+          if (val) {
+            currentState[key] = val;
           }
         }
       }

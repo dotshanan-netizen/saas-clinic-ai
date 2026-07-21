@@ -30,9 +30,27 @@ export interface ClinicWithCatalog {
 }
 
 // Helpers
+export function sanitizeAIValue(val: any): string | null {
+  if (val === null || val === undefined) return null;
+  const str = String(val).trim();
+  const lower = str.toLowerCase();
+  if (
+    lower === "null" ||
+    lower === "undefined" ||
+    lower === "none" ||
+    lower === "n/a" ||
+    lower === "غير محدد" ||
+    str === ""
+  ) {
+    return null;
+  }
+  return str;
+}
+
 export function extractSaudiPhone(text: string | null): string | null {
-  if (!text) return null;
-  const clean = text.replace(/[\s-]/g, "");
+  const sanitized = sanitizeAIValue(text);
+  if (!sanitized) return null;
+  const clean = sanitized.replace(/[\s-]/g, "");
   const match = clean.match(/(?<!\d)(?:\+?966|0)?5\d{8}(?!\d)/);
   return match ? match[0] : null;
 }
@@ -45,8 +63,9 @@ export function normalizeToOfficial(
   extracted: string | null,
   officialList: string[]
 ): string | null {
-  if (!extracted) return null;
-  const clean = extracted.trim().toLowerCase();
+  const sanitized = sanitizeAIValue(extracted);
+  if (!sanitized) return null;
+  const clean = sanitized.trim().toLowerCase();
 
   const exact = officialList.find((o) => o.toLowerCase() === clean);
   if (exact) return exact;
@@ -71,3 +90,52 @@ export function normalizeToOfficial(
 
   return null;
 }
+
+export interface BookingValidationResult {
+  isValid: boolean;
+  missingFields: string[];
+  normalizedPhone: string | null;
+  normalizedService: string | null;
+  normalizedDoctor: string | null;
+  normalizedBranch: string | null;
+  cleanName: string | null;
+  cleanTimeSlot: string | null;
+}
+
+export function validateBookingData(
+  data: ExtractedBookingData,
+  fallbackPhone: string,
+  clinic: ClinicWithCatalog
+): BookingValidationResult {
+  const cleanName = sanitizeAIValue(data.clientName);
+  const rawPhone = sanitizeAIValue(data.clientPhone) || fallbackPhone;
+  const phone = extractSaudiPhone(rawPhone);
+  
+  const serviceNames = clinic.services.map((s) => s.name);
+  const doctorNames = clinic.doctors.map((d) => d.name);
+  const branchNames = clinic.branches.map((b) => b.name);
+
+  const service = normalizeToOfficial(data.serviceName, serviceNames);
+  const doctor = normalizeToOfficial(data.doctorName, doctorNames) || "غير محدد";
+  const branch = normalizeToOfficial(data.branchName, branchNames);
+  const timeSlot = sanitizeAIValue(data.timeSlot);
+
+  const missingFields: string[] = [];
+  if (!cleanName || cleanName.length <= 1) missingFields.push("الاسم");
+  if (!phone) missingFields.push("رقم الجوال الصحيح");
+  if (!service) missingFields.push("الخدمة المطلوبة");
+  if (!branch) missingFields.push("الفرع المفضل");
+  if (!timeSlot) missingFields.push("الوقت المناسب");
+
+  return {
+    isValid: missingFields.length === 0,
+    missingFields,
+    normalizedPhone: phone,
+    normalizedService: service,
+    normalizedDoctor: doctor,
+    normalizedBranch: branch,
+    cleanName,
+    cleanTimeSlot: timeSlot,
+  };
+}
+
