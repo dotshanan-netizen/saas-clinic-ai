@@ -108,8 +108,8 @@ export function validateBookingData(
   clinic: ClinicWithCatalog
 ): BookingValidationResult {
   const cleanName = sanitizeAIValue(data.clientName);
-  const rawPhone = sanitizeAIValue(data.clientPhone) || fallbackPhone;
-  const phone = extractSaudiPhone(rawPhone);
+  const rawPhone = sanitizeAIValue(data.clientPhone);
+  const phone = rawPhone ? extractSaudiPhone(rawPhone) : extractSaudiPhone(fallbackPhone);
   
   const serviceNames = clinic.services.map((s) => s.name);
   const doctorNames = clinic.doctors.map((d) => d.name);
@@ -122,7 +122,7 @@ export function validateBookingData(
 
   const missingFields: string[] = [];
   if (!cleanName || cleanName.length <= 1) missingFields.push("الاسم");
-  if (!phone) missingFields.push("رقم الجوال الصحيح");
+  if (rawPhone && !phone) missingFields.push("رقم الجوال الصحيح");
   if (!service) missingFields.push("الخدمة المطلوبة");
   if (!branch) missingFields.push("الفرع المفضل");
   if (!timeSlot) missingFields.push("الوقت المناسب");

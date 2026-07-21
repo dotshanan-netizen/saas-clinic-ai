@@ -67,27 +67,26 @@ export class ConversationEngine {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const currentState: any = {
       clientName: activeBooking?.clientName || null,
-      clientPhone: activeBooking?.clientPhone || clientPhone,
+      clientPhone: activeBooking?.clientPhone || null, // null by default, resolved to whatsapp number downstream if no custom number provided
       serviceName: activeBooking?.serviceName || null,
       doctorName: activeBooking?.doctorName || null,
       branchName: activeBooking?.branchName || null,
       timeSlot: activeBooking?.timeSlot || null
     };
     
-    for (const msg of history) {
-      if (msg.sessionReset) {
-        // Reset booking details but keep client identity
-        currentState.serviceName = null;
-        currentState.doctorName = null;
-        currentState.branchName = null;
-        currentState.timeSlot = null;
+    let startFromIndex = 0;
+    for (let i = 0; i < history.length; i++) {
+      if (history[i].sessionReset) {
+        startFromIndex = i + 1;
       }
+    }
+
+    for (let i = startFromIndex; i < history.length; i++) {
+      const msg = history[i];
       if (msg.role === "assistant" && msg.bookingData) {
         for (const key of Object.keys(msg.bookingData)) {
           const val = sanitizeAIValue(msg.bookingData[key as keyof typeof msg.bookingData]);
-          if (val) {
-            currentState[key] = val;
-          }
+          currentState[key] = val;
         }
       }
     }
@@ -247,7 +246,7 @@ export class ConversationEngine {
     return {
       response: finalResponse,
       humanTakeover: aiResult.humanTakeover,
-      bookingData: (bookingCreated || bookingModified) ? null : aiResult.bookingData,
+      bookingData: (bookingCreated || bookingModified) ? null : modifiedBookingData,
       bookingCreated: bookingCreated || bookingModified,
       intent: resolvedIntent,
       stage: resolvedStage,

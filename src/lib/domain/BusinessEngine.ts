@@ -55,8 +55,8 @@ export class BusinessEngine {
 
       // If branch changed and user did NOT mention it in their message, revert to previous state
       if (sanitizedData.branchName !== currentState.branchName) {
-        const isBranchInText = branchNames.some((b) => userMessage.includes(b));
-        if (!userBranchMention && !isBranchInText) {
+        const hasMention = normalizeToOfficial(userMessage, branchNames) !== null;
+        if (!hasMention) {
           sanitizedData.branchName = currentState.branchName || null;
           modifiedBookingData.branchName = currentState.branchName || null;
         }
@@ -64,8 +64,8 @@ export class BusinessEngine {
 
       // If service changed and user did NOT mention it in their message, revert to previous state
       if (sanitizedData.serviceName !== currentState.serviceName) {
-        const isServiceInText = serviceNames.some((s) => userMessage.includes(s));
-        if (!userServiceMention && !isServiceInText) {
+        const hasMention = normalizeToOfficial(userMessage, serviceNames) !== null;
+        if (!hasMention) {
           sanitizedData.serviceName = currentState.serviceName || null;
           modifiedBookingData.serviceName = currentState.serviceName || null;
         }
@@ -73,8 +73,8 @@ export class BusinessEngine {
 
       // If doctor changed and user did NOT mention it in their message, revert to previous state
       if (sanitizedData.doctorName !== currentState.doctorName) {
-        const isDoctorInText = doctorNames.some((d) => userMessage.includes(d));
-        if (!userDoctorMention && !isDoctorInText) {
+        const hasMention = normalizeToOfficial(userMessage, doctorNames) !== null;
+        if (!hasMention) {
           sanitizedData.doctorName = currentState.doctorName || null;
           modifiedBookingData.doctorName = currentState.doctorName || null;
         }
@@ -144,8 +144,23 @@ export class BusinessEngine {
               },
             });
             bookingCreated = true;
-            // Hard Guarantee: Only send success message if validation.isValid is true!
-            finalResponse = `وصلني طلب الحجز بنجاح 🌷\n\n✅ الاسم: ${validation.cleanName}\n✅ الجوال: ${finalPhone}\n✅ الخدمة: ${validation.normalizedService}\n✅ الطبيب: ${validation.normalizedDoctor}\n✅ الفرع: ${validation.normalizedBranch}\n✅ الوقت المفضل: ${validation.cleanTimeSlot}\n\nتم إرسال طلبك لموظف الاستقبال، وسيتواصل معك لتأكيد الموعد النهائي حسب التوفر. 🌸`;
+            // Zero-Friction: append contact message if booking on behalf of another without a custom number
+            const userPhoneNormalized = extractSaudiPhone(clientPhone);
+            const isContactPhoneDifferent = finalPhone !== userPhoneNormalized && finalPhone !== clientPhone;
+
+            let contactNote = "";
+            const isForOther = userMessage.match(/زوجتي|والدتي|أمي|اختي|أختي|بنتي|ابنتي|صديقتي|ابني|ولدي/i);
+            
+            if (isForOther && !isContactPhoneDifferent) {
+              const relation = userMessage.match(/زوجتي/i) ? "زوجتك" :
+                               userMessage.match(/والدتي|أمي/i) ? "والدتك" :
+                               userMessage.match(/اختي|أختي/i) ? "أختك" :
+                               userMessage.match(/بنتي|ابنتي/i) ? "ابنتك" :
+                               userMessage.match(/صديقتي/i) ? "صديقتك" : "الشخص المعني";
+              contactNote = `\n\nسأتواصل مع ${relation} على نفس رقم الواتساب الحالي، وإذا كنت تفضل رقماً آخر للتواصل، أرجو تزويدي به 🌷`;
+            }
+
+            finalResponse = `وصلني طلب الحجز بنجاح 🌷\n\n✅ الاسم: ${validation.cleanName}\n✅ الجوال: ${finalPhone}\n✅ الخدمة: ${validation.normalizedService}\n✅ الطبيب: ${validation.normalizedDoctor}\n✅ الفرع: ${validation.normalizedBranch}\n✅ الوقت المفضل: ${validation.cleanTimeSlot}\n\nتم إرسال طلبك لموظف الاستقبال، وسيتواصل معك لتأكيد الموعد النهائي حسب التوفر. 🌸${contactNote}`;
           } else {
             finalResponse = `لدينا طلب حجز مُسجّل مسبقاً بنفس التفاصيل يا ${validation.cleanName} 🌷 تم إرسال طلبك بالفعل للاستقبال. إذا أردت إنشاء طلب جديد أو تعديل الحجز، أخبرني وسأبدأ معك طلبًا جديدًا.`;
           }
