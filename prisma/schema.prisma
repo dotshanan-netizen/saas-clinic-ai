@@ -64,6 +64,8 @@ model Clinic {
   whatsappWabaId      String?
   whatsappVerifyToken String?
   isAiActive          Boolean        @default(true)
+  countryCode         String         @default("SA")
+  allowedCountries    String         @default("SA") // e.g. "SA" or "SA,EG,AE"
 
   createdAt           DateTime       @default(now())
   branches            Branch[]

@@ -128,6 +128,7 @@ export class ConversationEngine {
     const llmStart = Date.now();
     try {
       aiResult = await AIProvider.classifyIntentAndExtractData(clinic, historyToModel, source, currentState);
+      console.log("[DEBUG AIResult]:", JSON.stringify(aiResult, null, 2));
       llmLatency = Date.now() - llmStart;
 
       // Log LLM Latency & Token Metrics
@@ -163,6 +164,7 @@ export class ConversationEngine {
       bookingCreated = result.bookingCreated;
       bookingModified = result.bookingModified || false;
       modifiedBookingData = result.modifiedBookingData || aiResult.bookingData;
+      aiResult.intent = result.resolvedIntent;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (error: any) {
       llmLatency = Date.now() - llmStart;
@@ -221,6 +223,7 @@ export class ConversationEngine {
     const resolvedIntent = aiResult.intent === "ModifyBooking" ? "Modify Booking" : 
                            aiResult.intent === "CancelAppointment" ? "Cancel Booking" : 
                            aiResult.intent === "BookAppointment" ? "Booking" : 
+                           aiResult.intent === "Objection" ? "Objection Handling" :
                            aiResult.intent;
 
     const resolvedStage = (aiResult.intent === "ModifyBooking" || aiResult.intent === "CancelAppointment") ? "Booking Management" :
