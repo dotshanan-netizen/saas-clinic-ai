@@ -7,10 +7,12 @@ export default defineConfig({
   retries: 0,
   workers: 1, // Single worker to ensure DB state transitions run sequentially
   reporter: "list",
+  globalSetup: require.resolve("./playwright-tests/global-setup"),
   use: {
     baseURL: "http://localhost:3000",
     trace: "on-first-retry",
     headless: true,
+    storageState: "playwright-tests/state.json",
   },
   projects: [
     {

@@ -5,20 +5,25 @@ import crypto from "crypto";
 
 export async function POST(request: Request) {
   try {
+    const tenantId = request.headers.get("x-tenant-id");
+    if (!tenantId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const requestId = crypto.randomUUID();
     const body = await request.json();
-    const { message, clientPhone, clinicSlug, source = "Simulator", action } = body;
+    const { message, clientPhone, source = "Simulator", action } = body;
 
-    if (!clientPhone || !clinicSlug) {
+    if (!clientPhone) {
       return NextResponse.json(
-        { error: "Missing required fields: clientPhone, clinicSlug" },
+        { error: "Missing required field: clientPhone" },
         { status: 400 }
       );
     }
 
-    // 1. Fetch the clinic with all catalog data
+    // 1. Fetch the clinic with all catalog data scoped to logged in tenant
     const clinic = await prisma.clinic.findUnique({
-      where: { slug: clinicSlug },
+      where: { id: tenantId },
       include: {
         branches: { where: { status: "ACTIVE" } },
         doctors: { where: { status: "ACTIVE" } },

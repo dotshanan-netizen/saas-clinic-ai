@@ -1,26 +1,31 @@
 import { NextRequest, NextResponse } from "next/server";
-import { encrypt } from "@/lib/auth";
+import { encrypt, verifyPassword } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { cookies } from "next/headers";
 
-// TEMPORARY DEVELOPMENT LOGIN ENDPOINT
 export async function POST(req: NextRequest) {
   try {
-    const { clinicSlug } = await req.json();
+    const { email, password } = await req.json();
 
-    if (!clinicSlug) {
-      return NextResponse.json({ error: "Missing clinicSlug" }, { status: 400 });
+    if (!email || !password) {
+      return NextResponse.json({ error: "Missing email or password" }, { status: 400 });
     }
 
-    const clinic = await prisma.clinic.findUnique({
-      where: { slug: clinicSlug }
+    const user = await prisma.user.findUnique({
+      where: { email },
+      include: { clinic: true }
     });
 
-    if (!clinic) {
-      return NextResponse.json({ error: "Clinic not found" }, { status: 404 });
+    if (!user) {
+      return NextResponse.json({ error: "Invalid credentials" }, { status: 401 });
     }
 
-    const payload = { clinicId: clinic.id, role: "admin", slug: clinic.slug };
+    const isPasswordValid = verifyPassword(password, user.passwordHash);
+    if (!isPasswordValid) {
+      return NextResponse.json({ error: "Invalid credentials" }, { status: 401 });
+    }
+
+    const payload = { userId: user.id, clinicId: user.clinicId, role: user.role, slug: user.clinic.slug };
     const sessionToken = await encrypt(payload);
 
     const cookieStore = await cookies();

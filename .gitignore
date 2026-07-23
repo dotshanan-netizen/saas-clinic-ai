@@ -47,6 +47,12 @@ next-env.d.ts
 
 # playwright test results
 /test-results/
-/playwright-report/
-
 .vercel
+
+# Cloudflare Tunnel configs
+cloudflared.config.yml
+
+# Temporary scratch and database dumps
+scratch/
+dump.rdb
+tunnel-url.txt

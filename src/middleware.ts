@@ -3,8 +3,15 @@ import type { NextRequest } from 'next/server';
 import { decrypt } from './lib/auth';
 
 export async function middleware(request: NextRequest) {
-  // Only protect /api/clinic routes
-  if (request.nextUrl.pathname.startsWith('/api/clinic')) {
+  const path = request.nextUrl.pathname;
+  // Protect /api/clinic, /api/conversations, /api/bookings, /api/chat, and /api/whatsapp routes
+  if (
+    path.startsWith('/api/clinic') ||
+    path.startsWith('/api/conversations') ||
+    path.startsWith('/api/bookings') ||
+    path.startsWith('/api/chat') ||
+    path.startsWith('/api/whatsapp')
+  ) {
     const sessionCookie = request.cookies.get('clinova_session')?.value;
     
     // Check if the cookie exists
@@ -44,5 +51,5 @@ export async function middleware(request: NextRequest) {
 
 // Ensure the middleware is only invoked on matching paths
 export const config = {
-  matcher: ['/api/clinic/:path*'],
+  matcher: ['/api/clinic/:path*', '/api/conversations/:path*', '/api/bookings/:path*', '/api/chat/:path*', '/api/whatsapp/:path*'],
 };

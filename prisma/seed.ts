@@ -46,6 +46,20 @@ async function main() {
 
   console.log(`Clinic created: ${clinic.name} (${clinic.id})`);
 
+  // Create Admin User for the clinic
+  const { hashPassword } = await import("../src/lib/auth.js");
+  const adminUser = await prisma.user.create({
+    data: {
+      email: "admin@rival.com",
+      passwordHash: hashPassword("clinova-admin-2026"),
+      name: "سارة المشرفة",
+      role: "ADMIN",
+      clinicId: clinic.id
+    }
+  });
+
+  console.log(`Admin user created: ${adminUser.email}`);
+
   // Create Branches
   const branchSahafa = await prisma.branch.create({
     data: {

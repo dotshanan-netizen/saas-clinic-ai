@@ -31,3 +31,18 @@ export async function getSession() {
     return null;
   }
 }
+
+export function hashPassword(password: string): string {
+  const crypto = require("crypto");
+  const salt = crypto.randomBytes(16).toString("hex");
+  const hash = crypto.pbkdf2Sync(password, salt, 1000, 64, "sha512").toString("hex");
+  return `${salt}:${hash}`;
+}
+
+export function verifyPassword(password: string, storedHash: string): boolean {
+  const crypto = require("crypto");
+  const [salt, hash] = storedHash.split(":");
+  if (!salt || !hash) return false;
+  const verifyHash = crypto.pbkdf2Sync(password, salt, 1000, 64, "sha512").toString("hex");
+  return hash === verifyHash;
+}

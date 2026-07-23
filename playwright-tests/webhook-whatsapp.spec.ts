@@ -135,7 +135,7 @@ test.describe("Meta WhatsApp Webhook API Tests", () => {
                 messages: [
                   {
                     from: testPhone,
-                    id: "ABEG12345678_TEST_MSG_ID",
+                    id: `ABEG12345678_TEST_MSG_ID_${Math.floor(Math.random() * 1000000)}`,
                     timestamp: "1672531199",
                     type: "text",
                     text: { body: "السلام عليكم، حابة أحجز موعد" }
@@ -151,16 +151,21 @@ test.describe("Meta WhatsApp Webhook API Tests", () => {
     const response = await request.post("/api/webhook/whatsapp", { data: payload });
     expect(response.status()).toBe(200);
 
-    // Verify DB entry was created
+    // Verify DB entry was created (with retry loop for async BullMQ processing)
     const formattedPhone = `+${testPhone}`;
-    const conversation = await prisma.conversation.findUnique({
-      where: {
-        clinicId_clientPhone: {
-          clinicId: clinicId,
-          clientPhone: formattedPhone
+    let conversation = null;
+    for (let i = 0; i < 15; i++) {
+      conversation = await prisma.conversation.findUnique({
+        where: {
+          clinicId_clientPhone: {
+            clinicId: clinicId,
+            clientPhone: formattedPhone
+          }
         }
-      }
-    });
+      });
+      if (conversation) break;
+      await new Promise((resolve) => setTimeout(resolve, 550));
+    }
 
     expect(conversation).not.toBeNull();
     const messages = conversation!.messages as any[];

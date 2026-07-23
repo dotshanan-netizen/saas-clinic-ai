@@ -1,0 +1,15 @@
+{
+  "cookies": [
+    {
+      "name": "clinova_session",
+      "value": "eyJhbGciOiJIUzI1NiJ9.eyJ1c2VySWQiOiJjbXJ3aTBydzAwMDAyZHphMHZtbnR6Y3J6IiwiY2xpbmljSWQiOiJjbXJ3aTByOG0wMDAwZHphMDZtaXIwZXVjIiwicm9sZSI6IkFETUlOIiwic2x1ZyI6InJpdmFsLWNsaW5pYyIsImlhdCI6MTc4NDc1MDYwMywiZXhwIjoxNzg0ODM3MDAzfQ.cRZBw6HjO5TYVgIWw68c7UPXxWd-yyPQ_t4T8_wg1Ug",
+      "domain": "localhost",
+      "path": "/",
+      "expires": 1784837003.482,
+      "httpOnly": true,
+      "secure": false,
+      "sameSite": "Lax"
+    }
+  ],
+  "origins": []
+}

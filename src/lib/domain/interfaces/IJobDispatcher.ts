@@ -4,6 +4,7 @@ export interface IncomingMessagePayload {
   clientPhone: string;
   messageText: string;
   source: string;
+  messageType?: string;
 }
 
 export interface IJobDispatcher {

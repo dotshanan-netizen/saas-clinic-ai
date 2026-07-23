@@ -49,6 +49,10 @@ export default function Dashboard() {
     try {
       setLoadingConversations(true);
       const res = await fetch(`/api/conversations?clinicSlug=${clinicSlug}`);
+      if (res.status === 401) {
+        window.location.href = "/login";
+        return;
+      }
       if (res.ok) {
         const data = await res.json();
         setConversations(data);
@@ -65,6 +69,10 @@ export default function Dashboard() {
     try {
       setLoadingDetails(true);
       const res = await fetch(`/api/conversations?clinicSlug=${clinicSlug}&clientPhone=${encodeURIComponent(phone)}`);
+      if (res.status === 401) {
+        window.location.href = "/login";
+        return;
+      }
       if (res.ok) {
         const data = await res.json();
         setSelectedMessages(data.messages);

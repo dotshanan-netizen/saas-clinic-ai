@@ -8,11 +8,22 @@ import { ServiceTable } from "@/components/dashboard/settings/ServiceTable";
 import { DoctorTable } from "@/components/dashboard/settings/DoctorTable";
 import { KnowledgeBaseTable } from "@/components/dashboard/settings/KnowledgeBaseTable";
 import { IntegrationCenter } from "@/components/dashboard/settings/IntegrationCenter";
+import { WhatsappAiSettings } from "@/components/dashboard/settings/WhatsappAiSettings";
 
-type SettingsTab = "profile" | "branches" | "services" | "doctors" | "kb" | "integrations";
+type SettingsTab = "profile" | "whatsapp-ai" | "branches" | "services" | "doctors" | "kb" | "integrations";
 
 export default function SettingsPage() {
-  const [activeTab, setActiveTab] = useState<SettingsTab>("profile");
+  const [activeTab, setActiveTab] = React.useState<SettingsTab>("profile");
+
+  React.useEffect(() => {
+    fetch("/api/clinic/config")
+      .then((res) => {
+        if (res.status === 401) {
+          window.location.href = "/login";
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100 flex flex-col font-sans antialiased" dir="rtl">
@@ -61,6 +72,20 @@ export default function SettingsPage() {
           >
             🏢 ملف العيادة الأساسي
             {activeTab === "profile" && (
+              <span className="absolute bottom-0 left-0 right-0 h-[2px] bg-indigo-500 rounded-full" />
+            )}
+          </button>
+
+          <button
+            onClick={() => setActiveTab("whatsapp-ai")}
+            className={`pb-3 text-xs font-bold transition-all relative cursor-pointer flex-shrink-0 ${
+              activeTab === "whatsapp-ai"
+                ? "text-indigo-400"
+                : "text-zinc-500 hover:text-zinc-300"
+            }`}
+          >
+            قنوات الاتصال والذكاء
+            {activeTab === "whatsapp-ai" && (
               <span className="absolute bottom-0 left-0 right-0 h-[2px] bg-indigo-500 rounded-full" />
             )}
           </button>
@@ -139,6 +164,7 @@ export default function SettingsPage() {
         {/* Tab Contents */}
         <div className="pt-2">
           {activeTab === "profile" && <ClinicProfileCard />}
+          {activeTab === "whatsapp-ai" && <WhatsappAiSettings />}
           {activeTab === "branches" && <BranchTable />}
           {activeTab === "services" && <ServiceTable />}
           {activeTab === "doctors" && <DoctorTable />}

@@ -4,12 +4,16 @@ import { prisma } from "@/lib/db";
 // GET /api/conversations?clinicSlug=rival-clinic
 export async function GET(request: Request) {
   try {
-    const { searchParams } = new URL(request.url);
-    const clinicSlug = searchParams.get("clinicSlug") || "rival-clinic"; // افتراضي للتسهيل في المتصفح
+    const tenantId = request.headers.get("x-tenant-id");
+    if (!tenantId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
 
-    // 1. جلب العيادة
+    const { searchParams } = new URL(request.url);
+
+    // 1. جلب العيادة المصادق عليها
     const clinic = await prisma.clinic.findUnique({
-      where: { slug: clinicSlug },
+      where: { id: tenantId },
     });
 
     if (!clinic) {

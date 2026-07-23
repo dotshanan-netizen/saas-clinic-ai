@@ -6,7 +6,10 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "worker": "npx tsx src/scripts/worker.ts",
+    "onboard-tenant": "npx tsx src/scripts/onboard-tenant.ts",
+    "tunnel": "npx tsx src/scripts/start-tunnel.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.2.1",

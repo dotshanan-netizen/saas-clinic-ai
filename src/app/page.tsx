@@ -26,7 +26,7 @@ export default function Home() {
             باقات الاشتراك
           </a>
           <a
-            href="/dashboard"
+            href="/login"
             className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-400 hover:from-emerald-400 hover:to-teal-300 text-zinc-950 text-xs font-bold transition-all shadow-lg shadow-emerald-500/10 hover:shadow-emerald-500/20 active:scale-95"
           >
             جرب المحاكي مجاناً 🚀
@@ -58,7 +58,7 @@ export default function Home() {
         {/* Call to Actions */}
         <div className="mt-10 flex flex-col sm:flex-row gap-4 justify-center items-center w-full max-w-md">
           <a
-            href="/dashboard"
+            href="/login"
             className="w-full sm:w-auto px-8 py-3.5 rounded-xl bg-zinc-100 hover:bg-zinc-200 text-zinc-950 font-extrabold text-sm transition-all shadow-lg active:scale-95 text-center"
           >
             دخول المحاكي ولوحة التحكم

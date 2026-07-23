@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/db";
-import { decrypt } from "@/lib/encryption";
-import { ConversationEngine } from "@/lib/domain/ConversationEngine";
+import crypto from "crypto";
+import { jobDispatcher } from "@/lib/infrastructure/queue/BullMQJobDispatcher";
 
 // GET: Meta Webhook verification
 export async function GET(request: Request) {
@@ -9,6 +9,14 @@ export async function GET(request: Request) {
     const mode = searchParams.get("hub.mode");
     const token = searchParams.get("hub.verify_token");
     const challenge = searchParams.get("hub.challenge");
+
+    console.log({
+      event: "WHATSAPP_WEBHOOK_VERIFY",
+      timestamp: new Date().toISOString(),
+      mode,
+      token,
+      challenge
+    });
 
     if (mode === "subscribe" && token) {
       const globalVerifyToken = process.env.WHATSAPP_VERIFY_TOKEN || "RIVAL_CLINIC_VERIFY_TOKEN";
@@ -40,9 +48,35 @@ export async function GET(request: Request) {
 // POST: Receiving incoming WhatsApp message notifications from Meta
 export async function POST(request: Request) {
   try {
-    console.log("🔥 WhatsApp POST reached");
-    const payload = await request.json();
-    console.log("Received WhatsApp Webhook Payload:", JSON.stringify(payload, null, 2));
+    const rawBody = await request.text();
+    const signature = request.headers.get("x-hub-signature-256");
+    const secret = process.env.WHATSAPP_APP_SECRET;
+
+    console.log({
+      event: "WHATSAPP_WEBHOOK_RECEIVED",
+      timestamp: new Date().toISOString(),
+      hasSignature: !!signature,
+      rawBodySnippet: rawBody.slice(0, 500)
+    });
+
+    if (secret && signature) {
+      const hmac = crypto.createHmac("sha256", secret).update(rawBody).digest("hex");
+      const expectedSignature = `sha256=${hmac}`;
+      if (signature !== expectedSignature) {
+        console.error("Invalid webhook signature");
+        return new Response("Unauthorized", { status: 401 });
+      }
+    } else if (secret && !signature) {
+      console.warn("Missing X-Hub-Signature-256 header in production");
+      return new Response("Unauthorized", { status: 401 });
+    }
+
+    let payload;
+    try {
+      payload = JSON.parse(rawBody);
+    } catch (e) {
+      return new Response("Bad Request", { status: 400 });
+    }
 
     const entry = payload.entry?.[0];
     const change = entry?.changes?.[0];
@@ -51,15 +85,19 @@ export async function POST(request: Request) {
     if (value && value.messages && value.messages.length > 0) {
       const message = value.messages[0];
       const from = message.from;
-      const messageText = message.text?.body;
+      const messageText = message.text?.body || "";
       const messageType = message.type;
       const phoneNumberId = value.metadata?.phone_number_id;
       const wamid = message.id;
 
-      if (!messageText || messageType !== "text") {
-        console.log(`Ignoring non-text message type: ${messageType}`);
-        return new Response("Success: Non-text message ignored", { status: 200 });
-      }
+      console.log({
+        event: "WHATSAPP_MESSAGE_PARSED",
+        timestamp: new Date().toISOString(),
+        phoneNumberId,
+        wamid,
+        from,
+        messageType
+      });
 
       // Idempotency check
       try {
@@ -76,74 +114,34 @@ export async function POST(request: Request) {
 
       const clientPhone = from.startsWith("+") ? from : `+${from}`;
 
-      // Find clinic by Meta phone number ID
-      const clinic = await prisma.clinic.findFirst({
-        where: { whatsappPhoneId: phoneNumberId },
-        include: {
-          branches: { where: { status: "ACTIVE" } },
-          doctors: { where: { status: "ACTIVE" } },
-          services: { where: { status: "ACTIVE" } },
-        },
+      console.log({
+        event: "QUEUE_JOB_CREATING",
+        timestamp: new Date().toISOString(),
+        clinicId: phoneNumberId,
+        wamid,
+        clientPhone
       });
 
-      if (!clinic) {
-        console.warn(`No clinic found matching whatsappPhoneId: ${phoneNumberId}`);
-        return new Response("Success: Phone number ID not recognized", { status: 200 });
-      }
+      // Offload processing to BullMQ worker! We just enqueue it here and return 200 OK immediately
+      const job = await jobDispatcher.enqueueIncomingMessage({
+        wamid,
+        clinicId: phoneNumberId, // this is the whatsappPhoneId
+        clientPhone,
+        messageText,
+        source: "WhatsApp",
+        messageType
+      });
 
-      if (!clinic.isAiActive) {
-        console.log(`AI chat is disabled for clinic: ${clinic.name}`);
-        return new Response("Success: AI chat disabled", { status: 200 });
-      }
+      console.log({
+        event: "QUEUE_JOB_CREATED",
+        timestamp: new Date().toISOString(),
+        clinicId: phoneNumberId,
+        jobId: job?.id || "unknown",
+        wamid
+      });
 
-      console.log(`Processing message from ${clientPhone} for clinic ${clinic.name}...`);
-
-      // Process via ConversationEngine directly (no queue needed)
-      const result = await ConversationEngine.processMessage(clinic, clientPhone, messageText, "WhatsApp");
-      console.log(`Generated response: "${result.response}"`);
-
-      // Send reply back via Meta Graph API
-      const storedToken = clinic.whatsappToken;
-      if (storedToken) {
-        try {
-          const parts = storedToken.split(":");
-          if (parts.length === 3) {
-            const [iv, authTag, encryptedData] = parts;
-            const decryptedToken = decrypt(encryptedData, iv, authTag);
-
-            const metaResponse = await fetch(
-              `https://graph.facebook.com/v18.0/${phoneNumberId}/messages`,
-              {
-                method: "POST",
-                headers: {
-                  Authorization: `Bearer ${decryptedToken}`,
-                  "Content-Type": "application/json",
-                },
-                body: JSON.stringify({
-                  messaging_product: "whatsapp",
-                  recipient_type: "individual",
-                  to: from,
-                  type: "text",
-                  text: { preview_url: false, body: result.response },
-                }),
-              }
-            );
-
-            if (!metaResponse.ok) {
-              const errText = await metaResponse.text();
-              console.error(`Meta API error: ${metaResponse.status} - ${errText}`);
-            } else {
-              console.log(`✅ Reply sent successfully to ${from}`);
-            }
-          }
-        } catch (err) {
-          console.error("Failed to send reply via Meta API:", err);
-        }
-      } else {
-        console.warn(`No whatsappToken configured for clinic: ${clinic.name}`);
-      }
-
-      return new Response("Success: Message processed", { status: 200 });
+      console.log(`[Webhook] Enqueued message (${messageType}) from ${clientPhone} to BullMQ.`);
+      return new Response("Success: Message enqueued", { status: 200 });
     }
 
     return new Response("Success: Event ignored (no messages found)", { status: 200 });
@@ -152,3 +150,4 @@ export async function POST(request: Request) {
     return new Response("Internal Server Error", { status: 500 });
   }
 }
+
