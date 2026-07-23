@@ -1,20 +1,22 @@
 import { jwtVerify, SignJWT } from "jose";
 import { cookies } from "next/headers";
 
-const SECRET_KEY = new TextEncoder().encode(
-  process.env.ENCRYPTION_KEY || "fallback_secret_key_change_me_in_prod"
-);
+function getSecretKey() {
+  return new TextEncoder().encode(
+    process.env.ENCRYPTION_KEY || "fallback_secret_key_change_me_in_prod"
+  );
+}
 
 export async function encrypt(payload: any) {
   return await new SignJWT(payload)
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
     .setExpirationTime("24h")
-    .sign(SECRET_KEY);
+    .sign(getSecretKey());
 }
 
 export async function decrypt(token: string): Promise<any> {
-  const { payload } = await jwtVerify(token, SECRET_KEY, {
+  const { payload } = await jwtVerify(token, getSecretKey(), {
     algorithms: ["HS256"],
   });
   return payload;
