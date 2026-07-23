@@ -123,7 +123,7 @@ export async function POST(request: Request) {
       });
 
       // Offload processing to BullMQ worker! We just enqueue it here and return 200 OK immediately
-      const job = await jobDispatcher.enqueueIncomingMessage({
+      await jobDispatcher.enqueueIncomingMessage({
         wamid,
         clinicId: phoneNumberId, // this is the whatsappPhoneId
         clientPhone,
@@ -136,7 +136,7 @@ export async function POST(request: Request) {
         event: "QUEUE_JOB_CREATED",
         timestamp: new Date().toISOString(),
         clinicId: phoneNumberId,
-        jobId: job?.id || "unknown",
+        jobId: "enqueued",
         wamid
       });
 

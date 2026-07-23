@@ -33,6 +33,7 @@ export class BusinessEngine {
     bookingCreated: boolean;
     bookingModified: boolean;
     modifiedBookingData: ExtractedBookingData | null;
+    resolvedIntent: string;
   }> {
     let finalResponse = aiResult.response;
     let bookingCreated = false;
@@ -236,11 +237,13 @@ export class BusinessEngine {
           finalResponse = `عذراً، حتى أتمكن من تأكيد الحجز، لا يزال ينقصنا معرفة: ${validation.missingFields.join(" و ")} 🌷`;
         }
 
-        if (validation.missingFields.includes("الاسم")) modifiedBookingData.clientName = null;
-        if (validation.missingFields.includes("رقم الجوال الصحيح") || validation.phoneRestricted) modifiedBookingData.clientPhone = null;
-        if (validation.missingFields.includes("الخدمة المطلوبة")) modifiedBookingData.serviceName = null;
-        if (validation.missingFields.includes("الفرع المفضل")) modifiedBookingData.branchName = null;
-        if (validation.missingFields.includes("الوقت المناسب")) modifiedBookingData.timeSlot = null;
+        if (modifiedBookingData) {
+          if (validation.missingFields.includes("الاسم")) modifiedBookingData.clientName = null;
+          if (validation.missingFields.includes("رقم الجوال الصحيح") || validation.phoneRestricted) modifiedBookingData.clientPhone = null;
+          if (validation.missingFields.includes("الخدمة المطلوبة")) modifiedBookingData.serviceName = null;
+          if (validation.missingFields.includes("الفرع المفضل")) modifiedBookingData.branchName = null;
+          if (validation.missingFields.includes("الوقت المناسب")) modifiedBookingData.timeSlot = null;
+        }
       }
     } else if (resolvedIntent === "CancelAppointment") {
       const defaultCountry = clinic.countryCode || "SA";
@@ -282,7 +285,7 @@ export class BusinessEngine {
       }
     } else if (resolvedIntent === "HumanTakeover" || resolvedIntent === "Complaint") {
       const reason = resolvedIntent === "Complaint" ? "شكوى أو اعتراض من العميل" : "طلب تصعيد للموظف البشري";
-      Logger.info(`[HumanTakeoverTriggered] Action required. Reason: ${reason}`, { clinicId: clinic.id, clientPhone });
+      Logger.info(`[HumanTakeoverTriggered] Action required. Reason: ${reason}`, { clinicId: clinic.id, clientPhone, requestId: "unknown" });
       finalResponse = "تم إيقاف الرد الآلي وتحويل محادثتك لموظف الاستقبال البشري فوراً لمساعدتك. سيقوم بالتواصل معك في أقرب وقت. 👩‍💻";
       bookingCreated = false;
       bookingModified = false;

@@ -164,7 +164,7 @@ export class ConversationEngine {
       bookingCreated = result.bookingCreated;
       bookingModified = result.bookingModified || false;
       modifiedBookingData = result.modifiedBookingData || aiResult.bookingData;
-      aiResult.intent = result.resolvedIntent;
+      aiResult.intent = result.resolvedIntent as any;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (error: any) {
       llmLatency = Date.now() - llmStart;
