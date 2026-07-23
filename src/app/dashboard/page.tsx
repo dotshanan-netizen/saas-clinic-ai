@@ -44,6 +44,10 @@ export default function Dashboard() {
   const [loadingDetails, setLoadingDetails] = useState(false);
   const [updatingStatus, setUpdatingStatus] = useState(false);
 
+  // States for sending manual replies
+  const [newMessageText, setNewMessageText] = useState("");
+  const [sendingMessage, setSendingMessage] = useState(false);
+
   // Fetch active conversations list
   const fetchConversations = async () => {
     try {
@@ -105,6 +109,38 @@ export default function Dashboard() {
       console.error("Error updating status:", err);
     } finally {
       setUpdatingStatus(false);
+    }
+  };
+
+  // Handle manual message dispatch
+  const handleSendMessage = async () => {
+    if (!selectedClientPhone || !newMessageText.trim() || sendingMessage) return;
+
+    try {
+      setSendingMessage(true);
+      const res = await fetch("/api/conversations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          clientPhone: selectedClientPhone,
+          messageText: newMessageText.trim(),
+        }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        // Append the new message to state immediately
+        setSelectedMessages((prev) => [...prev, data.message]);
+        setNewMessageText("");
+      } else {
+        const errorData = await res.json();
+        alert(`فشل إرسال الرسالة: ${errorData.error || "خطأ غير معروف"}`);
+      }
+    } catch (err) {
+      console.error("Error sending message:", err);
+      alert("حدث خطأ أثناء محاولة إرسال الرسالة.");
+    } finally {
+      setSendingMessage(false);
     }
   };
 
@@ -318,6 +354,33 @@ export default function Dashboard() {
               ))
             )}
           </div>
+
+          {/* Chat Composer */}
+          {selectedClientPhone && (
+            <div className="p-3 border-t border-zinc-800 bg-zinc-900 flex gap-2">
+              <input
+                type="text"
+                value={newMessageText}
+                onChange={(e) => setNewMessageText(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    handleSendMessage();
+                  }
+                }}
+                placeholder="اكتب ردك هنا..."
+                className="flex-1 bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-xs outline-none text-zinc-200 focus:border-emerald-500 transition-colors"
+                disabled={sendingMessage}
+              />
+              <button
+                onClick={handleSendMessage}
+                disabled={sendingMessage || !newMessageText.trim()}
+                className="px-4 py-2 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 text-zinc-950 font-bold text-xs rounded-xl transition-colors cursor-pointer"
+              >
+                {sendingMessage ? "..." : "إرسال"}
+              </button>
+            </div>
+          )}
         </section>
 
         {/* COLUMN 3: Active Patients (Rightmost - 3 Cols) */}
