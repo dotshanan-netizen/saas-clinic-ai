@@ -114,34 +114,149 @@ export async function POST(request: Request) {
 
       const clientPhone = from.startsWith("+") ? from : `+${from}`;
 
-      console.log({
-        event: "QUEUE_JOB_CREATING",
-        timestamp: new Date().toISOString(),
-        clinicId: phoneNumberId,
-        wamid,
-        clientPhone
-      });
+      if (process.env.USE_QUEUE === "true") {
+        console.log({
+          event: "QUEUE_JOB_CREATING",
+          timestamp: new Date().toISOString(),
+          clinicId: phoneNumberId,
+          wamid,
+          clientPhone
+        });
 
-      // Offload processing to BullMQ worker! We just enqueue it here and return 200 OK immediately
-      await jobDispatcher.enqueueIncomingMessage({
-        wamid,
-        clinicId: phoneNumberId, // this is the whatsappPhoneId
-        clientPhone,
-        messageText,
-        source: "WhatsApp",
-        messageType
-      });
+        // Offload processing to BullMQ worker!
+        await jobDispatcher.enqueueIncomingMessage({
+          wamid,
+          clinicId: phoneNumberId, // this is the whatsappPhoneId
+          clientPhone,
+          messageText,
+          source: "WhatsApp",
+          messageType
+        });
 
-      console.log({
-        event: "QUEUE_JOB_CREATED",
-        timestamp: new Date().toISOString(),
-        clinicId: phoneNumberId,
-        jobId: "enqueued",
-        wamid
-      });
+        console.log({
+          event: "QUEUE_JOB_CREATED",
+          timestamp: new Date().toISOString(),
+          clinicId: phoneNumberId,
+          jobId: "enqueued",
+          wamid
+        });
 
-      console.log(`[Webhook] Enqueued message (${messageType}) from ${clientPhone} to BullMQ.`);
-      return new Response("Success: Message enqueued", { status: 200 });
+        console.log(`[Webhook] Enqueued message (${messageType}) from ${clientPhone} to BullMQ.`);
+      } else {
+        console.log({
+          event: "SYNC_PROCESSING_STARTED",
+          timestamp: new Date().toISOString(),
+          clinicId: phoneNumberId,
+          wamid,
+          clientPhone
+        });
+
+        // 1. Fetch Clinic context
+        const clinic = await prisma.clinic.findFirst({
+          where: { whatsappPhoneId: phoneNumberId },
+          include: {
+            branches: { where: { status: "ACTIVE" } },
+            doctors: { 
+              where: { status: "ACTIVE" },
+              include: { services: { include: { service: true } } }
+            },
+            services: { where: { status: "ACTIVE" } },
+          },
+        });
+
+        if (!clinic) {
+          console.error(`Clinic not found: ${phoneNumberId}`);
+          return new Response("Clinic not found", { status: 404 });
+        }
+
+        // Check for non-text message type
+        if (messageType && messageType !== "text") {
+          console.warn(`[Webhook] Received non-text message type '${messageType}' from ${clientPhone}. Replying with polite error.`);
+          const storedToken = clinic.whatsappToken;
+          if (storedToken) {
+            const { decrypt } = await import("@/lib/encryption");
+            const parts = storedToken.split(":");
+            if (parts.length === 3) {
+              const [iv, authTag, encryptedData] = parts;
+              const decryptedToken = decrypt(encryptedData, iv, authTag);
+              const politeResponse = "عذراً، لا أستطيع معالجة الصور، الصوتيات أو الملفات حالياً. يرجى كتابة طلبك كرسالة نصية وسأقوم بمساعدتك فوراً! 🌸";
+              await fetch(
+                `https://graph.facebook.com/v18.0/${clinic.whatsappPhoneId}/messages`,
+                {
+                  method: "POST",
+                  headers: {
+                    Authorization: `Bearer ${decryptedToken}`,
+                    "Content-Type": "application/json",
+                  },
+                  body: JSON.stringify({
+                    messaging_product: "whatsapp",
+                    recipient_type: "individual",
+                    to: clientPhone,
+                    type: "text",
+                    text: { preview_url: false, body: politeResponse },
+                  }),
+                }
+              );
+            }
+          }
+          return new Response("Success: Polite error sent for unsupported media", { status: 200 });
+        }
+
+        if (!clinic.isAiActive) {
+          console.log(`[Webhook] AI is disabled for clinic ${phoneNumberId}, skipping.`);
+          return new Response("Success: AI Disabled", { status: 200 });
+        }
+
+        // 2. Process via ConversationEngine
+        const { ConversationEngine } = await import("@/lib/domain/ConversationEngine");
+        const finalResponse = await ConversationEngine.processMessage(
+          clinic as any,
+          clientPhone,
+          messageText,
+          "WhatsApp",
+          wamid
+        );
+
+        // 3. Decrypt Token and Reply to Meta
+        const storedToken = clinic.whatsappToken;
+        if (storedToken) {
+          const { decrypt } = await import("@/lib/encryption");
+          const parts = storedToken.split(":");
+          if (parts.length === 3) {
+            const [iv, authTag, encryptedData] = parts;
+            const decryptedToken = decrypt(encryptedData, iv, authTag);
+
+            const metaResponse = await fetch(
+              `https://graph.facebook.com/v18.0/${clinic.whatsappPhoneId}/messages`,
+              {
+                method: "POST",
+                headers: {
+                  "Authorization": `Bearer ${decryptedToken}`,
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                  messaging_product: "whatsapp",
+                  recipient_type: "individual",
+                  to: clientPhone,
+                  type: "text",
+                  text: {
+                    preview_url: false,
+                    body: finalResponse.response,
+                  },
+                }),
+              }
+            );
+
+            if (!metaResponse.ok) {
+              console.error(`Meta API error: ${await metaResponse.text()}`);
+            } else {
+              console.log(`[Webhook] Successfully replied to ${clientPhone} via Meta API.`);
+            }
+          }
+        }
+      }
+
+      return new Response("Success: Message processed", { status: 200 });
     }
 
     return new Response("Success: Event ignored (no messages found)", { status: 200 });
