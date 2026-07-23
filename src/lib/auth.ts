@@ -2,9 +2,7 @@ import { jwtVerify, SignJWT } from "jose";
 import { cookies } from "next/headers";
 
 function getSecretKey() {
-  return new TextEncoder().encode(
-    process.env.ENCRYPTION_KEY || "fallback_secret_key_change_me_in_prod"
-  );
+  return new TextEncoder().encode("clinova_super_secret_key_2026_mvp");
 }
 
 export async function encrypt(payload: any) {
