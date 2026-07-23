@@ -40,9 +40,9 @@ export async function middleware(request: NextRequest) {
         },
       });
 
-    } catch (err) {
+    } catch (err: any) {
       console.error("Session decryption failed in middleware:", err);
-      return NextResponse.json({ error: 'Unauthorized: Session decryption failed' }, { status: 401 });
+      return NextResponse.json({ error: 'Unauthorized: Session decryption failed', details: err.message }, { status: 401 });
     }
   }
 
