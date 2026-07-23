@@ -12,7 +12,11 @@ interface KBItem {
   content: string;
 }
 
-export function KnowledgeBaseTable() {
+interface KnowledgeBaseTableProps {
+  categoryFilter?: KbCategory | KbCategory[];
+}
+
+export function KnowledgeBaseTable({ categoryFilter }: KnowledgeBaseTableProps) {
   const clinicSlug = process.env.NEXT_PUBLIC_DEFAULT_CLINIC || "rival-clinic";
 
   const [items, setItems] = useState<KBItem[]>([]);
@@ -33,7 +37,14 @@ export function KnowledgeBaseTable() {
         throw new Error("فشل في تحميل مستندات قاعدة المعرفة");
       }
       const data = await res.json();
-      setItems(data);
+      
+      // Filter items if filter is provided
+      if (categoryFilter) {
+        const filters = Array.isArray(categoryFilter) ? categoryFilter : [categoryFilter];
+        setItems(data.filter((it: KBItem) => filters.includes(it.category)));
+      } else {
+        setItems(data);
+      }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "حدث خطأ غير متوقع";
       setErrorMsg(msg);
