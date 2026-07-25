@@ -59,12 +59,17 @@ async function sendMockWebhook(phoneNumberId, messageText) {
   console.log("==================================================\n");
 
   let browser;
+  let originalPhoneId = null;
+  let clinicId = null;
 
   try {
     // 1. Setup Data
     console.log("⏳ Setting up isolated test environment...");
     const clinic = await prisma.clinic.findFirst({ where: { slug: "rival-clinic" } });
     if (!clinic) throw new Error("No clinic found in DB");
+
+    clinicId = clinic.id;
+    originalPhoneId = clinic.whatsappPhoneId;
 
     // Assign a unique phone ID to ensure webhook routes specifically to this clinic
     const uniquePhoneId = "unique-test-" + Date.now();
@@ -131,7 +136,16 @@ async function sendMockWebhook(phoneNumberId, messageText) {
     console.log("The End-to-End pipeline is fully functional and real-time.");
     console.log("==================================================");
 
-    await browser.close();
+    if (browser) await browser.close();
+    
+    // Restore original phone ID
+    if (originalPhoneId && clinicId) {
+      await prisma.clinic.update({
+        where: { id: clinicId },
+        data: { whatsappPhoneId: originalPhoneId }
+      });
+      console.log("✅ Restored original clinic phone ID in DB.");
+    }
     await prisma.$disconnect();
     process.exit(0);
 
@@ -139,6 +153,15 @@ async function sendMockWebhook(phoneNumberId, messageText) {
     console.error("\n💥 WHATSAPP RUNTIME E2E: FAILED");
     console.error(err.message);
     if (browser) await browser.close();
+    
+    // Restore original phone ID on failure
+    if (originalPhoneId && clinicId) {
+      await prisma.clinic.update({
+        where: { id: clinicId },
+        data: { whatsappPhoneId: originalPhoneId }
+      });
+      console.log("✅ Restored original clinic phone ID in DB after failure.");
+    }
     await prisma.$disconnect();
     process.exit(1);
   }
