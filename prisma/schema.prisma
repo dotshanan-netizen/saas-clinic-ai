@@ -41,9 +41,12 @@ enum KbCategory {
 
 enum KnowledgeStatus {
   DRAFT
+  PROCESSING
   REVIEW
   APPROVED
   PUBLISHED
+  INDEXED
+  FAILED
   ARCHIVED
 }
 
@@ -119,10 +122,25 @@ model Doctor {
   clinic    Clinic         @relation(fields: [clinicId], references: [id], onDelete: Cascade)
   branches  DoctorBranch[]
   services  DoctorService[]
+  schedules DoctorSchedule[]
   createdAt DateTime       @default(now())
 
   @@index([clinicId])
   @@index([status])
+}
+
+model DoctorSchedule {
+  id        String   @id @default(cuid())
+  doctorId  String
+  doctor    Doctor   @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  dayOfWeek String   // e.g. "MONDAY", "TUESDAY", etc.
+  startTime String   // e.g. "09:00"
+  endTime   String   // e.g. "17:00"
+  isClosed  Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@unique([doctorId, dayOfWeek])
+  @@index([doctorId])
 }
 
 model Service {
@@ -174,6 +192,7 @@ model KnowledgeBase {
   clinicId  String
   clinic    Clinic     @relation(fields: [clinicId], references: [id], onDelete: Cascade)
   createdAt DateTime   @default(now())
+  deletedAt DateTime?
 
   @@index([clinicId])
   @@index([createdAt])
@@ -233,13 +252,14 @@ model Booking {
 }
 
 model Conversation {
-  id          String   @id @default(cuid())
-  clientPhone String
-  messages    Json     // Array of message objects {role: "user"|"assistant", content: string, timestamp: Date}
-  clinicId    String
-  clinic      Clinic   @relation(fields: [clinicId], references: [id], onDelete: Cascade)
-  updatedAt   DateTime @updatedAt
-  createdAt   DateTime @default(now())
+  id            String   @id @default(cuid())
+  clientPhone   String
+  messages      Json     // Array of message objects {role: "user"|"assistant", content: string, timestamp: Date}
+  clinicId      String
+  clinic        Clinic   @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  humanTakeover Boolean  @default(false)
+  updatedAt     DateTime @updatedAt
+  createdAt     DateTime @default(now())
 
   @@unique([clinicId, clientPhone])
   @@index([clinicId])
@@ -278,4 +298,17 @@ model User {
   createdAt    DateTime @default(now())
 
   @@index([clinicId])
+}
+
+model MetricLog {
+  id          String   @id @default(cuid())
+  metricName  String   // e.g. "llm_latency_ms", "prompt_tokens"
+  metricValue Float
+  clinicId    String
+  clientPhone String?
+  requestId   String?
+  createdAt   DateTime @default(now())
+
+  @@index([clinicId, metricName])
+  @@index([createdAt])
 }

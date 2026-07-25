@@ -1,0 +1,12 @@
+{
+  "country": "SA",
+  "defaultLocale": "ar-SA",
+  "timezone": "Asia/Riyadh",
+  "currency": "SAR",
+  "phoneFormat": "E164",
+  "constraints": {
+    "maxBranches": 100,
+    "maxDoctors": 500,
+    "maxServices": 1000
+  }
+}

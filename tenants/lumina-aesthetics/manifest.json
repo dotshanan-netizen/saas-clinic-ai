@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "template": "aesthetic-clinic",
+  "tenantSlug": "lumina-aesthetics",
+  "files": {
+    "clinic": "clinic.json",
+    "branches": "branches.json",
+    "services": "services.json",
+    "doctors": "doctors.json",
+    "schedules": "schedules.json",
+    "knowledgeBase": "kb.json",
+    "aiSettings": "ai-settings.json",
+    "validation": "validation.json",
+    "featureFlags": "feature-flags.json"
+  }
+}

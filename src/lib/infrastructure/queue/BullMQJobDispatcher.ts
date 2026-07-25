@@ -1,26 +1,29 @@
+import { Prisma } from "@/generated/prisma";
 import { Queue } from "bullmq";
 import { IJobDispatcher, IncomingMessagePayload } from "@/lib/domain/interfaces/IJobDispatcher";
 import { prisma } from "@/lib/db";
 import { JobStatus } from "@/generated/prisma";
 
-const redisUrl = process.env.UPSTASH_REDIS_URL || "redis://localhost:6379";
+export type { IncomingMessagePayload };
+
+
+
+import { ConnectionManager } from "../resilience/ConnectionManager";
 
 // Ensure we don't recreate the queue continuously in dev mode
 const globalForBull = global as unknown as { whatsappQueue: Queue };
 export const whatsappQueue =
   globalForBull.whatsappQueue ||
   new Queue("whatsapp-incoming", {
-    connection: {
-      url: redisUrl,
-    },
+    connection: ConnectionManager.getRedisConnection("whatsapp-incoming"),
     defaultJobOptions: {
       attempts: 3,
       backoff: {
         type: "exponential",
         delay: 1000,
       },
-      removeOnComplete: true,
-      removeOnFail: false,
+      removeOnComplete: { age: 3600 * 24, count: 500 }, // Keep last 500 completed for 24h
+      removeOnFail: { age: 3600 * 24 * 7, count: 1000 }, // Keep last 1000 failed for 7 days
     },
   });
 
@@ -40,7 +43,7 @@ export class BullMQJobDispatcher implements IJobDispatcher {
         jobId: job.id!,
         type: "incoming-message",
         status: JobStatus.PENDING,
-        payload: payload as any,
+        payload: payload as unknown as Prisma.InputJsonValue,
       },
     });
 

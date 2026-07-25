@@ -47,7 +47,7 @@ async function main() {
   console.log(`Clinic created: ${clinic.name} (${clinic.id})`);
 
   // Create Admin User for the clinic
-  const { hashPassword } = await import("../src/lib/auth.js");
+  const { hashPassword } = await import("../src/lib/password.js");
   const adminUser = await prisma.user.create({
     data: {
       email: "admin@rival.com",
@@ -193,6 +193,22 @@ async function main() {
   });
 
   console.log("Linked doctors to branches.");
+
+  // Create Doctor Schedules (9 AM to 5 PM, Mon-Thu & Sat, closed Fri, Sun)
+  for (const doc of [docSahar, docAhmed, docNoura]) {
+    for (const d of days) {
+      await prisma.doctorSchedule.create({
+        data: {
+          doctorId: doc.id,
+          dayOfWeek: d,
+          startTime: "09:00",
+          endTime: "17:00",
+          isClosed: d === "FRIDAY" || d === "SUNDAY"
+        }
+      });
+    }
+  }
+  console.log("Created doctor schedules.");
 
   // Link Doctors to Services (DoctorService)
   // د. سحر تقدم البوتكس، الفيلر، والكشفية

@@ -1,4 +1,4 @@
-import { parsePhoneNumberFromString } from 'libphonenumber-js/min';
+
 import { validateBookingData, ExtractedBookingData } from '../src/lib/domain/types';
 
 const data: ExtractedBookingData = {
@@ -20,5 +20,7 @@ const clinic = {
   doctors: [{ name: "د. سحر", specialty: "جلدية", services: [] }]
 };
 
-const result = validateBookingData(data, "+966500000009", clinic as any);
+const result = validateBookingData(data, "+966500000009", clinic as unknown as import("../src/lib/domain/types").ClinicWithCatalog);
 console.log(JSON.stringify(result, null, 2));
+
+export {};

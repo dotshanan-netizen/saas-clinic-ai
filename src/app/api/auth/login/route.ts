@@ -1,10 +1,42 @@
 import { NextRequest, NextResponse } from "next/server";
-import { encrypt, verifyPassword } from "@/lib/auth";
+import { encrypt } from "@/lib/auth";
+import { verifyPassword } from "@/lib/password";
 import { prisma } from "@/lib/db";
 import { cookies } from "next/headers";
+import { Ratelimit } from "@upstash/ratelimit";
+import { Redis } from "@upstash/redis";
+
+const redisUrl = process.env.UPSTASH_REDIS_REST_URL;
+const redisToken = process.env.UPSTASH_REDIS_REST_TOKEN;
+
+let ratelimit: Ratelimit | null = null;
+if (redisUrl && redisToken) {
+  ratelimit = new Ratelimit({
+    redis: new Redis({ url: redisUrl, token: redisToken }),
+    limiter: Ratelimit.slidingWindow(10, "1 m"),
+  });
+}
 
 export async function POST(req: NextRequest) {
   try {
+    if (ratelimit) {
+      const ip = req.headers.get("x-forwarded-for") || "127.0.0.1";
+      const { success, limit, reset, remaining } = await ratelimit.limit(`login_ratelimit_${ip}`);
+      
+      if (!success) {
+        return NextResponse.json(
+          { error: "Too many login attempts. Please try again later." },
+          {
+            status: 429,
+            headers: {
+              "X-RateLimit-Limit": limit.toString(),
+              "X-RateLimit-Remaining": remaining.toString(),
+              "X-RateLimit-Reset": reset.toString(),
+            },
+          }
+        );
+      }
+    }
     const { email, password } = await req.json();
 
     if (!email || !password) {
@@ -31,8 +63,8 @@ export async function POST(req: NextRequest) {
     const cookieStore = await cookies();
     cookieStore.set("clinova_session", sessionToken, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
+      secure: true,
+      sameSite: "strict",
       maxAge: 60 * 60 * 24, // 1 day
       path: "/",
     });

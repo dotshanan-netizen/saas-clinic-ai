@@ -3,6 +3,12 @@
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { z } from "zod";
+
+const LoginSchema = z.object({
+  email: z.string().email("البريد الإلكتروني غير صالح"),
+  password: z.string().min(6, "كلمة المرور يجب أن تكون 6 أحرف على الأقل"),
+});
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -16,13 +22,18 @@ export default function LoginPage() {
     if (loading) return;
 
     setLoading(true);
-    setError(null);
+    const parsed = LoginSchema.safeParse({ email, password });
+    if (!parsed.success) {
+      setError(parsed.error.issues[0].message);
+      setLoading(false);
+      return;
+    }
 
     try {
       const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify(parsed.data),
       });
 
       const data = await res.json();
@@ -33,9 +44,8 @@ export default function LoginPage() {
 
       // Login success, redirect to dashboard
       router.push("/dashboard");
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "حدث خطأ غير متوقع");} finally {
       setLoading(false);
     }
   };

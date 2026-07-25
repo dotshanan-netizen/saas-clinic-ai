@@ -1,6 +1,23 @@
 import { ChatMessage, ExtractedBookingData, ClinicWithCatalog } from "@/lib/domain/types";
 import fs from "fs";
 import path from "path";
+import { z } from "zod";
+import { Logger } from "../logging/Logger";
+
+const AIResponseSchema = z.object({
+  response: z.string().default(""),
+  intent: z.enum(["BookAppointment", "CancelAppointment", "ModifyBooking", "Inquiry", "Complaint", "HumanTakeover", "Objection", "Unknown"]).catch("Unknown"),
+  humanTakeover: z.boolean().catch(false).default(false),
+  requiresRag: z.boolean().catch(false).default(false),
+  bookingData: z.object({
+    clientName: z.string().nullable().optional().catch(null),
+    clientPhone: z.string().nullable().optional().catch(null),
+    serviceName: z.string().nullable().optional().catch(null),
+    doctorName: z.string().nullable().optional().catch(null),
+    branchName: z.string().nullable().optional().catch(null),
+    timeSlot: z.string().nullable().optional().catch(null),
+  }).catch({ clientName: null, clientPhone: null, serviceName: null, doctorName: null, branchName: null, timeSlot: null }).default({ clientName: null, clientPhone: null, serviceName: null, doctorName: null, branchName: null, timeSlot: null })
+});
 
 export type AIIntent = 
   | "BookAppointment" 
@@ -30,7 +47,9 @@ export class AIProvider {
     clinic: ClinicWithCatalog,
     history: ChatMessage[],
     source: string,
-    currentState: any
+    currentState: Record<string, unknown>,
+    availableSlotsText: string = "",
+    businessProfile: string = ""
   ): Promise<AIClassificationResult> {
     const openaiKey = process.env.OPENAI_API_KEY;
     const geminiKey = process.env.GEMINI_API_KEY;
@@ -64,7 +83,7 @@ export class AIProvider {
     try {
       const promptFilePath = path.join(process.cwd(), "src/app/api/chat/system_prompt.txt");
       baseSystemPrompt = fs.readFileSync(promptFilePath, "utf8");
-    } catch (err) {
+    } catch {
       console.warn("Could not read system_prompt.txt, using fallback.");
     }
 
@@ -74,6 +93,9 @@ ${baseSystemPrompt}
 اسم العيادة الحالي: ${clinic.name}
 التعليمات الخاصة بالعيادة:
 ${clinic.customPrompt || "تحدثي باسم العيادة بلطف."}
+
+دليل التشغيل وقواعد العمل (Business Profile):
+${businessProfile || "غير محدد"}
 
 الخدمات المتوفرة: ${servicesList}
 الأطباء المرتبطين بكل خدمة:
@@ -89,12 +111,14 @@ ${doctorsMappingStr}
 الفرع: ${currentState.branchName || 'غير محدد'}
 الوقت المفضل: ${currentState.timeSlot || 'غير محدد'}
 
+${availableSlotsText ? `\n--- الأوقات المتاحة فعلياً للطبيب المحدد ---\n${availableSlotsText}\nاعتمدي حصراً على هذه الأوقات ولا تقترحي أوقاتاً من خارجها.\n` : ""}
+
 التعليمات الفنية لعملك كمحرك ذكاء اصطناعي آمن:
-- تذكري البيانات الحالية جيداً ولا تطلبيها مرة أخرى من العميل!
-- لإنشاء حجز (BookAppointment)، يجب أن تجمعي 5 بيانات أساسية: (الاسم، الخدمة، الطبيب، الفرع، الوقت). رقم الجوال يتم اعتماده تلقائياً بواسطة النظام ولا داعي لطلبه إطلاقاً إلا إذا تبرع العميل برقم مغاير.
-- لا تقومي أبداً بتأكيد الحجز أو إخبار المستخدم بأنه "تم رفع الطلب" إلا إذا اكتملت جميع البيانات الخمسة. إذا كانت هناك بيانات ناقصة، استمري في سؤال المستخدم عنها بلطف ضمن حقل "response".
-- إذا سأل العميل عن المواعيد المتاحة، فلا تدّعي أنك تستطيعين التحقق من جدول المواعيد مباشرة. اطلبي منه اليوم أو الوقت المفضل إذا لم يذكره، ثم أوضحي أن فريق الاستقبال سيؤكد الموعد النهائي حسب التوفر. وإذا كان العميل قد ذكر بالفعل الوقت أو اليوم المفضل، فلا تطلبيه مرة أخرى، واكتفي بإبلاغه أن فريق الاستقبال سيؤكد التوفر.
-- عند طلب الاسم لأول مرة، استخدمي صيغة لطيفة ومباشرة، مثلاً: "ممتاز 🌷 حتى أتمكن من حجز موعد لك مع [الطبيب] لـ [الخدمة]، أحتاج فقط الاسم الكامل."
+- إذا كان طلب المستخدم هو حجز موعد (مثل: "أبغى أحجز"، "احجز لي"، إلخ)، يجب أن تكون النية دائماً "BookAppointment"، حتى لو كانت بعض البيانات ناقصة.
+- لإنشاء حجز (BookAppointment)، يجب أن تجمعي 5 بيانات أساسية: (الاسم، الخدمة، الطبيب، الفرع، الوقت).
+- لا تقومي أبداً بتأكيد الحجز أو إخبار المستخدم بأنه "تم الحجز" إلا إذا اكتملت جميع البيانات الخمسة. إذا كانت هناك بيانات ناقصة، اجعلي النية "BookAppointment" واستمري في سؤال المستخدم عنها بلطف ضمن حقل "response".
+- اقترحي دائماً أوقاتاً متاحة وحقيقية من قائمة "الأوقات المتاحة فعلياً". إذا لم يذكر العميل طبيباً بعد، اطلبي منه اختيار الطبيب.
+- عند طلب الاسم لأول مرة، استخدمي صيغة لطيفة ومباشرة.
 
 - إذا طلب المستخدم إلغاء حجز قائم أو إلغاء طلب الحجز الحالي (بما في ذلك التعبيرات الصريحة أو الضمنية أو اللهجات أو الأخطاء الإملائية مثل: "ألغي حجزي"، "كنسل"، "احذف الموعد"، "احذفه لو سمحت"، "الغي الموعد"، "خلاص بلاش"، "ما أبي أكمل"، "انس الموضوع"، "طنش"، "مو ضروري"، "فلتلغ الموعد"، "مش عاوز احجز خلاص"، "شيل الحجز يا طيب"، "تراجعت عن الحجز"، "ألقيه"، "كنسله", "الغيي الحجز"، "الغي")، فاجعلي النية دائماً "CancelAppointment" (ولا تجعليها HumanTakeover أو Complaint).
 - هام جداً: إذا قال المستخدم "خلاص شكراً" أو "شكراً خلاص" أو "بلاش خلاص" أو "ما ودي خلاص" أثناء عملية جمع بيانات الحجز، فيجب تصنيف النية كـ "CancelAppointment" فوراً (لأنها تعني التراجع وإلغاء الجلسة).
@@ -126,7 +150,7 @@ ${doctorsMappingStr}
 `;
 
     let rawJson = "";
-    let usage: any = null;
+    let usage: { promptTokens: number; completionTokens: number; totalTokens: number; } | null = null;
 
     try {
       if (geminiKey) {
@@ -166,7 +190,7 @@ ${doctorsMappingStr}
       } else {
         throw new Error("No Gemini key");
       }
-    } catch (e) {
+    } catch {
       // Fallback to OpenAI if Gemini fails
       const apiUrl = "https://api.openai.com/v1/chat/completions";
       const response = await fetch(apiUrl, {
@@ -201,16 +225,41 @@ ${doctorsMappingStr}
       }
     }
 
-    const parsed = JSON.parse(rawJson);
+    let parsed: z.infer<typeof AIResponseSchema>;
+    try {
+      // Basic cleanup for possible markdown code blocks around JSON
+      let cleanedRawJson = rawJson.trim();
+      if (cleanedRawJson.startsWith("```json")) {
+        cleanedRawJson = cleanedRawJson.substring(7);
+      } else if (cleanedRawJson.startsWith("```")) {
+        cleanedRawJson = cleanedRawJson.substring(3);
+      }
+      if (cleanedRawJson.endsWith("```")) {
+        cleanedRawJson = cleanedRawJson.slice(0, -3);
+      }
+      
+      const rawParsed = JSON.parse(cleanedRawJson);
+      const validationResult = AIResponseSchema.safeParse(rawParsed);
+      
+      if (validationResult.success) {
+        parsed = validationResult.data;
+      } else {
+        console.error("Zod AI response validation failed:", validationResult.error);
+        Logger.metric("zod_validation_error", 1, { requestId: "unknown", clinicId: clinic.id, error: validationResult.error.message });
+        parsed = AIResponseSchema.parse({});
+      }
+    } catch (e: any) {
+      console.error("Failed to parse AI response JSON", e);
+      Logger.metric("json_parse_error", 1, { requestId: "unknown", clinicId: clinic.id, error: e.message });
+      parsed = AIResponseSchema.parse({});
+    }
 
     return {
-      response: parsed.response || "",
-      intent: parsed.intent || "Unknown",
-      humanTakeover: !!parsed.humanTakeover,
-      requiresRag: !!parsed.requiresRag,
-      bookingData: parsed.bookingData || {
-        clientName: null, clientPhone: null, serviceName: null, doctorName: null, branchName: null, timeSlot: null
-      },
+      response: parsed.response,
+      intent: parsed.intent as AIIntent,
+      humanTakeover: parsed.humanTakeover,
+      requiresRag: parsed.requiresRag,
+      bookingData: parsed.bookingData as ExtractedBookingData,
       usage
     };
   }
@@ -238,7 +287,7 @@ ${doctorsMappingStr}
 
       const data = await response.json();
       return data.embedding.values;
-    } catch (e) {
+    } catch {
       if (!openaiKey) throw new Error("No OpenAI Key for fallback embedding");
       const apiUrl = "https://api.openai.com/v1/embeddings";
       const response = await fetch(apiUrl, {

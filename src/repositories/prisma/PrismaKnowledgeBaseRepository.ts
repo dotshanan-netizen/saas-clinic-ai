@@ -18,7 +18,7 @@ import { prisma } from "@/lib/db";
 export class PrismaKnowledgeBaseRepository implements IKnowledgeBaseRepository {
   async findById(id: string): Promise<KnowledgeBase | null> {
     return prisma.knowledgeBase.findUnique({
-      where: { id },
+      where: { id, deletedAt: null },
     });
   }
 
@@ -28,6 +28,7 @@ export class PrismaKnowledgeBaseRepository implements IKnowledgeBaseRepository {
         clinic: {
           slug: clinicSlug,
         },
+        deletedAt: null,
       },
       orderBy: {
         createdAt: "desc",
@@ -66,8 +67,9 @@ export class PrismaKnowledgeBaseRepository implements IKnowledgeBaseRepository {
   }
 
   async delete(id: string): Promise<KnowledgeBase> {
-    return prisma.knowledgeBase.delete({
+    return prisma.knowledgeBase.update({
       where: { id },
+      data: { deletedAt: new Date() }
     });
   }
 }

@@ -10,8 +10,8 @@ export type JourneyStage =
 
 export class JourneyResolver {
   static resolveStage(
-    history: any[],
-    currentState: any,
+    history: { role: string; content: string }[],
+    currentState: Record<string, unknown>,
     intentId: string,
     buyingIntent: string = "low"
   ): JourneyStage {

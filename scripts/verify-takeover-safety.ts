@@ -1,6 +1,5 @@
 import { prisma } from "../src/lib/db";
 import { ConversationEngine } from "../src/lib/domain/ConversationEngine";
-import { extractSaudiPhone } from "../src/lib/domain/types";
 import crypto from "crypto";
 
 async function runSafetyAndTakeoverTests() {
@@ -192,3 +191,5 @@ runSafetyAndTakeoverTests().catch(err => {
   console.error("Fatal test error:", err);
   process.exit(1);
 });
+
+export {};

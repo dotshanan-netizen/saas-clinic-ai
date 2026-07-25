@@ -48,6 +48,7 @@ export function DoctorTable() {
 
   useEffect(() => {
     loadData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleAddNew = () => {

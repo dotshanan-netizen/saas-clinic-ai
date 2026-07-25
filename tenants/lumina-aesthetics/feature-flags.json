@@ -1,0 +1,9 @@
+{
+  "appointments": true,
+  "knowledgeBase": true,
+  "doctorSelection": true,
+  "multiBranch": true,
+  "humanTakeover": true,
+  "analytics": false,
+  "voice": false
+}

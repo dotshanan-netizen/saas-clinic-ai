@@ -1,14 +1,16 @@
 "use client";
 
 import React from "react";
-import Link from "next/link";
+
 import { ClinicProfileCard } from "@/components/dashboard/settings/ClinicProfileCard";
 import { BranchTable } from "@/components/dashboard/settings/BranchTable";
 import { DoctorTable } from "@/components/dashboard/settings/DoctorTable";
 import { IntegrationCenter } from "@/components/dashboard/settings/IntegrationCenter";
 import { WhatsappAiSettings } from "@/components/dashboard/settings/WhatsappAiSettings";
 
-type SettingsTab = "profile" | "branches" | "doctors" | "whatsapp-ai" | "integrations";
+import { BusinessProfileCard } from "@/components/dashboard/settings/BusinessProfileCard";
+
+type SettingsTab = "profile" | "branches" | "doctors" | "whatsapp-ai" | "integrations" | "business-profile";
 
 export default function SettingsPage() {
   const [activeTab, setActiveTab] = React.useState<SettingsTab>("profile");
@@ -113,6 +115,20 @@ export default function SettingsPage() {
               <span className="absolute bottom-0 left-0 right-0 h-[2px] bg-indigo-500 rounded-full" />
             )}
           </button>
+
+          <button
+            onClick={() => setActiveTab("business-profile")}
+            className={`pb-3 text-xs font-bold transition-all relative cursor-pointer flex-shrink-0 outline-none ${
+              activeTab === "business-profile"
+                ? "text-indigo-400"
+                : "text-zinc-500 hover:text-zinc-300"
+            }`}
+          >
+            📘 دليل التشغيل (Business Profile)
+            {activeTab === "business-profile" && (
+              <span className="absolute bottom-0 left-0 right-0 h-[2px] bg-indigo-500 rounded-full" />
+            )}
+          </button>
         </div>
 
         {/* Tab Contents */}
@@ -122,6 +138,7 @@ export default function SettingsPage() {
           {activeTab === "doctors" && <DoctorTable />}
           {activeTab === "whatsapp-ai" && <WhatsappAiSettings />}
           {activeTab === "integrations" && <IntegrationCenter />}
+          {activeTab === "business-profile" && <BusinessProfileCard />}
         </div>
       </main>
     </div>

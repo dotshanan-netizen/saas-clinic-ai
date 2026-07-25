@@ -1,13 +1,13 @@
-const { parsePhoneNumberFromString } = require("libphonenumber-js");
-type CountryCode = any;
-
+import { parsePhoneNumberFromString, CountryCode } from "libphonenumber-js";
+import { TimeNormalizer } from "./TimeNormalizer";
 
 export interface ChatMessage {
-  role: "user" | "assistant";
+  role: "user" | "assistant" | "system";
   content: string;
   timestamp: string;
   bookingData?: ExtractedBookingData | null;
   sessionReset?: boolean;
+  messageId?: string;
 }
 
 export interface ExtractedBookingData {
@@ -72,7 +72,7 @@ export function extractSaudiPhone(text: string | null, defaultCountry: string = 
       if (globalPhone && globalPhone.isValid()) {
         return globalPhone.format("E.164");
       }
-    } catch (e: any) {}
+    } catch { }
   }
 
   // 2. Try parsing with default country fallback for local/national numbers
@@ -81,7 +81,7 @@ export function extractSaudiPhone(text: string | null, defaultCountry: string = 
     if (phoneNumber && phoneNumber.isValid()) {
       return phoneNumber.format("E.164");
     }
-  } catch (e: any) {}
+  } catch { }
 
   // 3. Last resort fallback logic for KSA local formatting if default country is SA
   if (defaultCountry.toUpperCase() === "SA") {
@@ -92,7 +92,7 @@ export function extractSaudiPhone(text: string | null, defaultCountry: string = 
       try {
         const check = parsePhoneNumberFromString(saPhone);
         if (check && check.isValid()) return check.format("E.164");
-      } catch (e) {}
+      } catch {}
       // Fallback accept Saudi local structural digits if valid looking
       return saPhone;
     }
@@ -179,7 +179,9 @@ export function validateBookingData(
   const service = normalizeToOfficial(data.serviceName, serviceNames);
   const doctor = normalizeToOfficial(data.doctorName, doctorNames) || "غير محدد";
   const branch = normalizeToOfficial(data.branchName, branchNames);
-  const timeSlot = sanitizeAIValue(data.timeSlot);
+  const rawTimeSlot = sanitizeAIValue(data.timeSlot);
+  const timeSlot = TimeNormalizer.normalize(rawTimeSlot);
+  console.log(`[TimeNormalizer] raw: '${rawTimeSlot}' -> normalized: '${timeSlot}'`);
 
   const missingFields: string[] = [];
   let phoneRestricted = false;

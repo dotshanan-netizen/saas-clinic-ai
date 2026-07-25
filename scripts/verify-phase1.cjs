@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-require-imports */
 const { prisma } = require('./src/lib/db');
 const { Logger } = require('./src/lib/infrastructure/logging/Logger');
 const { ConversationEngine } = require('./src/lib/domain/ConversationEngine');

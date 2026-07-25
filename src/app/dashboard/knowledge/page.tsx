@@ -28,47 +28,38 @@ export default function KnowledgePage() {
         </div>
 
         {/* Dynamic Tab Switcher */}
-        <div className="flex border-b border-zinc-800 gap-6 overflow-x-auto shrink-0">
+        <div className="flex gap-4 overflow-x-auto shrink-0 pb-2">
           <button
             onClick={() => setActiveTab("services")}
-            className={`pb-3 text-xs font-bold transition-all relative cursor-pointer flex-shrink-0 outline-none ${
+            className={`px-5 py-2.5 rounded-full text-xs font-bold transition-all flex-shrink-0 outline-none border cursor-pointer ${
               activeTab === "services"
-                ? "text-indigo-400"
-                : "text-zinc-500 hover:text-zinc-300"
+                ? "bg-indigo-500/10 border-indigo-500/50 text-indigo-400 shadow-[0_0_15px_rgba(99,102,241,0.2)]"
+                : "bg-zinc-900/50 border-zinc-800 text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800"
             }`}
           >
             🩺 الخدمات والأسعار (Services)
-            {activeTab === "services" && (
-              <span className="absolute bottom-0 left-0 right-0 h-[2px] bg-indigo-500 rounded-full" />
-            )}
           </button>
 
           <button
             onClick={() => setActiveTab("faq")}
-            className={`pb-3 text-xs font-bold transition-all relative cursor-pointer flex-shrink-0 outline-none ${
+            className={`px-5 py-2.5 rounded-full text-xs font-bold transition-all flex-shrink-0 outline-none border cursor-pointer ${
               activeTab === "faq"
-                ? "text-indigo-400"
-                : "text-zinc-500 hover:text-zinc-300"
+                ? "bg-indigo-500/10 border-indigo-500/50 text-indigo-400 shadow-[0_0_15px_rgba(99,102,241,0.2)]"
+                : "bg-zinc-900/50 border-zinc-800 text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800"
             }`}
           >
             ❓ الأسئلة الشائعة (FAQ)
-            {activeTab === "faq" && (
-              <span className="absolute bottom-0 left-0 right-0 h-[2px] bg-indigo-500 rounded-full" />
-            )}
           </button>
 
           <button
             onClick={() => setActiveTab("documents")}
-            className={`pb-3 text-xs font-bold transition-all relative cursor-pointer flex-shrink-0 outline-none ${
+            className={`px-5 py-2.5 rounded-full text-xs font-bold transition-all flex-shrink-0 outline-none border cursor-pointer ${
               activeTab === "documents"
-                ? "text-indigo-400"
-                : "text-zinc-500 hover:text-zinc-300"
+                ? "bg-indigo-500/10 border-indigo-500/50 text-indigo-400 shadow-[0_0_15px_rgba(99,102,241,0.2)]"
+                : "bg-zinc-900/50 border-zinc-800 text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800"
             }`}
           >
             📜 المستندات والسياسات (Documents)
-            {activeTab === "documents" && (
-              <span className="absolute bottom-0 left-0 right-0 h-[2px] bg-indigo-500 rounded-full" />
-            )}
           </button>
         </div>
 

@@ -2,6 +2,7 @@ import { IKnowledgeBaseRepository } from "@/repositories/interfaces/IKnowledgeBa
 import { UpsertKbDto } from "@/dtos";
 import { DomainEventBus, KnowledgeBaseUpdatedEvent } from "@/lib/events";
 import { KnowledgeBase } from "@/generated/prisma";
+import { KnowledgeIndexingService } from "./KnowledgeIndexingService";
 
 export class KnowledgeBaseService {
   constructor(private kbRepository: IKnowledgeBaseRepository) {}
@@ -37,11 +38,25 @@ export class KnowledgeBaseService {
       );
     }
 
+    // --- RAG Integration Fix ---
+    // Isolated Indexing Service Call
+    await KnowledgeIndexingService.indexDocument({
+      kbId: kb.id,
+      clinicId: kb.clinicId,
+      category: kb.category,
+      content: kb.content,
+    });
+    // ---------------------------
+
     return kb;
   }
 
   async deleteKBItem(id: string): Promise<KnowledgeBase> {
     const kb = await this.kbRepository.delete(id);
+    
+    // Remove from RAG pipeline
+    await KnowledgeIndexingService.removeIndex(kb.id, kb.clinicId);
+
     DomainEventBus.publish(
       new KnowledgeBaseUpdatedEvent(kb.clinicId, kb.category, "delete")
     );

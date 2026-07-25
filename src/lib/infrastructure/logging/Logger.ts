@@ -100,5 +100,20 @@ export class Logger {
       ...Logger.sanitizePayload(context),
     };
     console.log(JSON.stringify(payload));
+    
+    // Asynchronously insert into database
+    import("@/lib/db").then(({ prisma }) => {
+      prisma.metricLog.create({
+        data: {
+          metricName: name,
+          metricValue: value,
+          clinicId: context.clinicId,
+          clientPhone: context.clientPhone || null,
+          requestId: context.requestId || null,
+        }
+      }).catch(err => {
+        console.error("Failed to save metric to database", err);
+      });
+    }).catch(err => console.error("Failed to import prisma for metric logging", err));
   }
 }

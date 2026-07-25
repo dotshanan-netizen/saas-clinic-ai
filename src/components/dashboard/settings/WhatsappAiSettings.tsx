@@ -1,6 +1,17 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import { z } from "zod";
+
+const WhatsappSettingsSchema = z.object({
+  name: z.string().min(1, "اسم العيادة مطلوب داخلياً"),
+  whatsappPhoneId: z.string().nullable().optional(),
+  whatsappWabaId: z.string().nullable().optional(),
+  isAiActive: z.boolean(),
+  customPrompt: z.string().min(10, "يجب أن تكون التعليمات البرمجية 10 حروف على الأقل").nullable().optional(),
+  whatsappToken: z.string().optional(),
+  whatsappVerifyToken: z.string().optional(),
+});
 
 interface ClinicConfig {
   name: string;
@@ -67,6 +78,7 @@ export function WhatsappAiSettings() {
     return () => {
       active = false;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -78,8 +90,7 @@ export function WhatsappAiSettings() {
 
     // Build payload
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const payload: any = {
-      clinicSlug,
+    const payloadRaw: any = {
       name: clinicName, // Required by schema
       whatsappPhoneId: whatsappPhoneId || null,
       whatsappWabaId: whatsappWabaId || null,
@@ -89,11 +100,23 @@ export function WhatsappAiSettings() {
 
     // Only send token and verify token if they were filled (to avoid overwriting with empty)
     if (whatsappToken.trim()) {
-      payload.whatsappToken = whatsappToken;
+      payloadRaw.whatsappToken = whatsappToken;
     }
     if (whatsappVerifyToken.trim()) {
-      payload.whatsappVerifyToken = whatsappVerifyToken;
+      payloadRaw.whatsappVerifyToken = whatsappVerifyToken;
     }
+
+    const parsed = WhatsappSettingsSchema.safeParse(payloadRaw);
+    if (!parsed.success) {
+      setErrorMsg(parsed.error.issues[0].message);
+      setSaving(false);
+      return;
+    }
+
+    const payload = {
+      clinicSlug,
+      ...parsed.data,
+    };
 
     try {
       const res = await fetch("/api/clinic/config", {

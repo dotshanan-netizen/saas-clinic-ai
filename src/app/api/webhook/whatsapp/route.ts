@@ -74,7 +74,7 @@ export async function POST(request: Request) {
     let payload;
     try {
       payload = JSON.parse(rawBody);
-    } catch (e) {
+    } catch {
       return new Response("Bad Request", { status: 400 });
     }
 
@@ -104,8 +104,8 @@ export async function POST(request: Request) {
         await prisma.processedWebhook.create({
           data: { id: wamid, clinicId: phoneNumberId },
         });
-      } catch (err: any) {
-        if (err.code === "P2002") {
+      } catch (err: unknown) {
+        if ((err as { code?: string }).code === "P2002") {
           console.log(`[Idempotency] Duplicate webhook ignored for wamid: ${wamid}`);
           return new Response("Success: Duplicate event ignored", { status: 200 });
         }
@@ -113,6 +113,42 @@ export async function POST(request: Request) {
       }
 
       const clientPhone = from.startsWith("+") ? from : `+${from}`;
+
+      if (messageType && messageType !== "text") {
+        console.warn(`[Webhook] Received non-text message type '${messageType}' from ${clientPhone}. Replying with polite error.`);
+        const clinicForMedia = await prisma.clinic.findFirst({
+          where: { whatsappPhoneId: phoneNumberId },
+          select: { whatsappToken: true, whatsappPhoneId: true }
+        });
+        const storedToken = clinicForMedia?.whatsappToken;
+        if (storedToken) {
+          const { decrypt } = await import("@/lib/encryption");
+          const parts = storedToken.split(":");
+          if (parts.length === 3) {
+            const [iv, authTag, encryptedData] = parts;
+            const decryptedToken = decrypt(encryptedData, iv, authTag);
+            const politeResponse = "عذراً، لا أستطيع معالجة الصور، الصوتيات أو الملفات حالياً. يرجى كتابة طلبك كرسالة نصية وسأقوم بمساعدتك فوراً! 🌸";
+            await fetch(
+              `https://graph.facebook.com/v18.0/${clinicForMedia.whatsappPhoneId}/messages`,
+              {
+                method: "POST",
+                headers: {
+                  Authorization: `Bearer ${decryptedToken}`,
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                  messaging_product: "whatsapp",
+                  recipient_type: "individual",
+                  to: clientPhone,
+                  type: "text",
+                  text: { preview_url: false, body: politeResponse },
+                }),
+              }
+            );
+          }
+        }
+        return new Response("Success: Polite error sent for unsupported media", { status: 200 });
+      }
 
       if (process.env.USE_QUEUE === "true") {
         console.log({
@@ -169,39 +205,6 @@ export async function POST(request: Request) {
           return new Response("Clinic not found", { status: 404 });
         }
 
-        // Check for non-text message type
-        if (messageType && messageType !== "text") {
-          console.warn(`[Webhook] Received non-text message type '${messageType}' from ${clientPhone}. Replying with polite error.`);
-          const storedToken = clinic.whatsappToken;
-          if (storedToken) {
-            const { decrypt } = await import("@/lib/encryption");
-            const parts = storedToken.split(":");
-            if (parts.length === 3) {
-              const [iv, authTag, encryptedData] = parts;
-              const decryptedToken = decrypt(encryptedData, iv, authTag);
-              const politeResponse = "عذراً، لا أستطيع معالجة الصور، الصوتيات أو الملفات حالياً. يرجى كتابة طلبك كرسالة نصية وسأقوم بمساعدتك فوراً! 🌸";
-              await fetch(
-                `https://graph.facebook.com/v18.0/${clinic.whatsappPhoneId}/messages`,
-                {
-                  method: "POST",
-                  headers: {
-                    Authorization: `Bearer ${decryptedToken}`,
-                    "Content-Type": "application/json",
-                  },
-                  body: JSON.stringify({
-                    messaging_product: "whatsapp",
-                    recipient_type: "individual",
-                    to: clientPhone,
-                    type: "text",
-                    text: { preview_url: false, body: politeResponse },
-                  }),
-                }
-              );
-            }
-          }
-          return new Response("Success: Polite error sent for unsupported media", { status: 200 });
-        }
-
         if (!clinic.isAiActive) {
           console.log(`[Webhook] AI is disabled for clinic ${phoneNumberId}, skipping.`);
           return new Response("Success: AI Disabled", { status: 200 });
@@ -210,7 +213,7 @@ export async function POST(request: Request) {
         // 2. Process via ConversationEngine
         const { ConversationEngine } = await import("@/lib/domain/ConversationEngine");
         const finalResponse = await ConversationEngine.processMessage(
-          clinic as any,
+          clinic as unknown as import("@/lib/domain/types").ClinicWithCatalog,
           clientPhone,
           messageText,
           "WhatsApp",

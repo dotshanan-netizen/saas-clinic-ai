@@ -1,6 +1,16 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import { z } from "zod";
+
+const ClinicProfileSchema = z.object({
+  name: z.string().min(3, "يجب أن يكون اسم العيادة 3 حروف على الأقل"),
+  logoUrl: z.union([z.literal(""), z.string().url("رابط الشعار غير صالح").optional()]),
+  description: z.string().optional(),
+  contactPhone: z.string().optional(),
+  welcomeMessage: z.string().optional(),
+  isAiActive: z.boolean(),
+});
 
 interface ClinicProfile {
   name: string;
@@ -61,6 +71,7 @@ export function ClinicProfileCard() {
     return () => {
       active = false;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Save changes
@@ -71,21 +82,26 @@ export function ClinicProfileCard() {
     setErrorMsg(null);
     setSuccessMsg(null);
 
-    // Basic Client side validation
-    if (name.trim().length < 3) {
-      setErrorMsg("يجب أن يكون اسم العيادة 3 حروف على الأقل");
-      setSaving(false);
-      return;
-    }
-
-    const payload = {
-      clinicSlug,
+    // Zod Client side validation
+    const payloadRaw = {
       name,
       logoUrl: logoUrl || undefined,
       description: description || undefined,
       contactPhone: contactPhone || undefined,
       welcomeMessage: welcomeMessage || undefined,
       isAiActive,
+    };
+
+    const parsed = ClinicProfileSchema.safeParse(payloadRaw);
+    if (!parsed.success) {
+      setErrorMsg(parsed.error.issues[0].message);
+      setSaving(false);
+      return;
+    }
+
+    const payload = {
+      clinicSlug,
+      ...parsed.data,
     };
 
     try {

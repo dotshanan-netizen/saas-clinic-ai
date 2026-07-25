@@ -2,6 +2,16 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import { z } from "zod";
+
+const DoctorSchema = z.object({
+  name: z.string().min(3, "يجب أن يكون اسم الطبيب 3 حروف على الأقل"),
+  specialty: z.string().min(3, "يجب كتابة تخصص الطبيب بالتفصيل (3 حروف على الأقل)"),
+  imageUrl: z.union([z.literal(""), z.string().url("رابط الصورة غير صالح").optional()]),
+  status: z.enum(["ACTIVE", "INACTIVE"]),
+  branchIds: z.array(z.string()),
+  serviceIds: z.array(z.string()),
+});
 
 interface Branch {
   id: string;
@@ -88,6 +98,7 @@ export function DoctorForm({ doctor, onClose, onSaved }: DoctorFormProps) {
     return () => {
       active = false;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Populate form if editing
@@ -127,14 +138,18 @@ export function DoctorForm({ doctor, onClose, onSaved }: DoctorFormProps) {
     setSaving(true);
     setErrorMsg(null);
 
-    // Basic Validation
-    if (name.trim().length < 3) {
-      setErrorMsg("يجب أن يكون اسم الطبيب 3 حروف على الأقل");
-      setSaving(false);
-      return;
-    }
-    if (specialty.trim().length < 3) {
-      setErrorMsg("يجب كتابة تخصص الطبيب بالتفصيل (3 حروف على الأقل)");
+    const payloadRaw = {
+      name,
+      specialty,
+      imageUrl: imageUrl || undefined,
+      status,
+      branchIds: selectedBranches,
+      serviceIds: selectedServices,
+    };
+
+    const parsed = DoctorSchema.safeParse(payloadRaw);
+    if (!parsed.success) {
+      setErrorMsg(parsed.error.issues[0].message);
       setSaving(false);
       return;
     }
@@ -143,12 +158,7 @@ export function DoctorForm({ doctor, onClose, onSaved }: DoctorFormProps) {
       const payload = {
         clinicSlug,
         id: doctor?.id || undefined,
-        name,
-        specialty,
-        imageUrl: imageUrl || undefined,
-        status,
-        branchIds: selectedBranches,
-        serviceIds: selectedServices,
+        ...parsed.data,
       };
 
       const res = await fetch("/api/clinic/doctors", {

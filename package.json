@@ -6,19 +6,32 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint",
+    "lint": "next lint",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "playwright test",
+    "postinstall": "prisma generate",
     "worker": "npx tsx src/scripts/worker.ts",
-    "onboard-tenant": "npx tsx src/scripts/onboard-tenant.ts",
-    "tunnel": "npx tsx src/scripts/start-tunnel.ts"
+    "onboard": "npx tsx src/scripts/onboard-tenant.ts",
+    "tenant:verify": "npx tsx src/scripts/verify-tenant.ts",
+    "tunnel": "npx tsx src/scripts/start-tunnel.ts",
+    "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
+    "@google/genai": "^2.13.0",
     "@prisma/client": "^6.2.1",
+    "@upstash/ratelimit": "^2.0.8",
+    "@upstash/redis": "^1.38.0",
+    "bcryptjs": "^3.0.3",
     "bullmq": "^5.80.9",
+    "date-fns": "^4.4.0",
     "dotenv": "^17.4.2",
     "ioredis": "^5.11.1",
     "jose": "^6.2.3",
     "libphonenumber-js": "^1.13.9",
+    "mammoth": "^1.12.0",
     "next": "16.2.10",
+    "pdf-parse": "^2.4.5",
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "zod": "^4.4.3"
@@ -26,15 +39,20 @@
   "devDependencies": {
     "@playwright/test": "^1.61.1",
     "@tailwindcss/postcss": "^4",
+    "@types/bcryptjs": "^2.4.6",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@vitest/coverage-v8": "^4.1.10",
     "eslint": "^9",
     "eslint-config-next": "16.2.10",
     "playwright": "^1.61.1",
     "prisma": "^6.2.1",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "tsconfig-paths": "^4.2.0",
+    "typescript": "^5",
+    "vitest": "^4.1.10",
+    "vitest-mock-extended": "^5.1.0"
   },
   "prisma": {
     "seed": "npx tsx prisma/seed.ts"

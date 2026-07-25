@@ -45,6 +45,7 @@ export function ServiceTable() {
 
   useEffect(() => {
     loadServices();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleAddNew = () => {
@@ -92,13 +93,19 @@ export function ServiceTable() {
         )}
 
         {services.length === 0 ? (
-          <div className="text-center py-12 border border-dashed border-zinc-800 rounded-xl">
-            <p className="text-zinc-500 text-xs">لا يوجد خدمات علاجية مسجلة حالياً لهذه العيادة.</p>
+          <div className="flex flex-col items-center justify-center text-center py-16 px-4 border border-dashed border-zinc-800/60 rounded-2xl bg-zinc-900/30">
+            <div className="w-16 h-16 bg-indigo-500/10 rounded-full flex items-center justify-center mb-4 border border-indigo-500/20 shadow-[0_0_20px_rgba(99,102,241,0.1)]">
+              <span className="text-2xl">🩺</span>
+            </div>
+            <h3 className="text-zinc-200 font-bold mb-2">لا توجد خدمات مسجلة</h3>
+            <p className="text-zinc-500 text-xs max-w-sm leading-relaxed mb-6">
+              لم يتم إضافة أي خدمات علاجية أو تجميلية حتى الآن. أضف الخدمات لمساعدة الذكاء الاصطناعي في الرد على استفسارات المرضى حول الأسعار.
+            </p>
             <button
               onClick={handleAddNew}
-              className="mt-4 px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-lg text-xs font-semibold cursor-pointer"
+              className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold shadow-lg shadow-indigo-600/20 transition-all cursor-pointer"
             >
-              أنشئ أول خدمة الآن 🩺
+              ➕ إضافة أول خدمة
             </button>
           </div>
         ) : (

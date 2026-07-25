@@ -47,6 +47,7 @@ export function BranchTable() {
 
   useEffect(() => {
     loadBranches();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleAddNew = () => {

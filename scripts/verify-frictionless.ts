@@ -1,6 +1,5 @@
 import { prisma } from "../src/lib/db";
 import { ConversationEngine } from "../src/lib/domain/ConversationEngine";
-import { extractSaudiPhone } from "../src/lib/domain/types";
 import crypto from "crypto";
 
 async function runFrictionlessTests() {
@@ -137,3 +136,5 @@ runFrictionlessTests().catch((err) => {
   console.error(err);
   process.exit(1);
 });
+
+export {};

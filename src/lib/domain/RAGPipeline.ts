@@ -17,22 +17,34 @@ export class RAGPipeline {
   static async retrieve(
     clinicId: string,
     question: string,
-    topK: number = 3
+    topK: number = 3,
+    minSimilarity: number = 0.5
   ): Promise<RetrievedChunk[]> {
     // 1. Generate embedding for the question
-    const questionEmbedding = await AIProvider.generateEmbedding(question);
+    const { GoogleGenAI } = await import("@google/genai");
+    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
+    const response = await ai.models.embedContent({
+      model: "text-embedding-004",
+      contents: question
+    });
+    const questionEmbedding = response.embeddings?.[0]?.values;
+    if (!questionEmbedding) return [];
+
 
     // 2. Perform Vector Search (Cosine Similarity)
-    // We filter by clinicId and KnowledgeStatus = 'PUBLISHED'
+    // We filter by clinicId and KnowledgeStatus = 'INDEXED' or 'APPROVED' or 'PUBLISHED'
     const query = `
       SELECT 
         c.id, 
         c."documentId", 
         c.content,
+        d.title,
+        d.source,
         1 - (c.embedding <=> $1::vector) as similarity
       FROM "KnowledgeChunk" c
       JOIN "KnowledgeDocument" d ON c."documentId" = d.id
-      WHERE d."clinicId" = $2 AND d.status = 'PUBLISHED'
+      WHERE d."clinicId" = $2 AND d.status IN ('INDEXED', 'APPROVED', 'PUBLISHED')
+        AND 1 - (c.embedding <=> $1::vector) >= $4
       ORDER BY c.embedding <=> $1::vector
       LIMIT $3
     `;
@@ -41,22 +53,30 @@ export class RAGPipeline {
     // We format the array to a vector string: '[0.1, 0.2, ...]'
     const vectorString = `[${questionEmbedding.join(",")}]`;
 
-    const results = await prisma.$queryRawUnsafe<any[]>(
+    const results = await prisma.$queryRawUnsafe<Array<{
+      chunk_id: string;
+      doc_id: string;
+      title: string;
+      source: string;
+      content: string;
+      similarity: number;
+    }>>(
       query,
       vectorString,
       clinicId,
-      topK
+      topK,
+      minSimilarity
     );
 
     // 3. Simple Logging for Citation/Audit
     console.log(`[RAG Retrieval] Found ${results.length} chunks for question: "${question}"`);
     results.forEach((r, i) => {
-      console.log(`  [Chunk ${i+1}] DocID: ${r.documentId}, ChunkID: ${r.id}, Similarity: ${r.similarity.toFixed(4)}`);
+      console.log(`  [Chunk ${i+1}] DocID: ${r.doc_id}, Title: ${r.title}, Similarity: ${r.similarity.toFixed(4)}`);
     });
 
     return results.map(r => ({
-      id: r.id,
-      documentId: r.documentId,
+      id: r.chunk_id,
+      documentId: r.doc_id,
       content: r.content,
       similarity: r.similarity,
     }));
@@ -79,8 +99,7 @@ export class RAGPipeline {
     const geminiKey = process.env.GEMINI_API_KEY;
     if (!geminiKey) throw new Error("Gemini API Key missing");
 
-    const prompt = `
-أنتِ مساعدة ذكية لعيادة (${clinic.name}).
+    const prompt = `أنتِ مساعدة ذكية لعيادة (${clinic.name}).
 لقد سأل المستخدم سؤالاً استفسارياً. 
 يجب عليك الإجابة بناءً على المعلومات التالية (المصادر) فقط.
 
@@ -96,27 +115,64 @@ ${question}
 3. إذا كانت المعلومات موجودة، أجيبي بلطف واختصار مستخدمة المعلومات المقدمة فقط.
 `;
 
-    const apiUrl = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
-    const response = await fetch(apiUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${geminiKey}`,
-      },
-      body: JSON.stringify({
-        model: "gemini-2.0-flash-lite",
-        messages: [{ role: "user", content: prompt }],
-        temperature: 0.1, // Low temperature for high grounding
-      }),
-    });
+    let rawAnswer = "";
 
-    if (!response.ok) {
-      console.error(`Grounding AI Error: ${await response.text()}`);
-      return "لا أملك معلومات كافية للإجابة على هذا السؤال، وسأحول استفسارك لموظف العيادة.";
+    try {
+      const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${geminiKey}`;
+      const response = await fetch(apiUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          contents: [
+            {
+              role: "user",
+              parts: [{ text: prompt }]
+            }
+          ],
+          generationConfig: {
+            temperature: 0.1,
+          }
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Grounding AI Error: ${await response.text()}`);
+      }
+
+      const data = await response.json();
+      rawAnswer = data.candidates[0].content.parts[0].text.trim();
+    } catch (error) {
+      console.warn("[RAG Grounding] Gemini failed, falling back to OpenAI.", error);
+      const openaiKey = process.env.OPENAI_API_KEY;
+      if (!openaiKey) {
+        console.error("No OpenAI fallback key available");
+        return "لا أملك معلومات كافية للإجابة على هذا السؤال، وسأحول استفسارك لموظف العيادة.";
+      }
+      
+      const apiUrl = "https://api.openai.com/v1/chat/completions";
+      const response = await fetch(apiUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${openaiKey}`,
+        },
+        body: JSON.stringify({
+          model: "gpt-4o-mini",
+          messages: [{ role: "user", content: prompt }],
+          temperature: 0.1,
+        }),
+      });
+
+      if (!response.ok) {
+        console.error(`Grounding AI Fallback Error: ${await response.text()}`);
+        return "لا أملك معلومات كافية للإجابة على هذا السؤال، وسأحول استفسارك لموظف العيادة.";
+      }
+
+      const data = await response.json();
+      rawAnswer = data.choices[0].message.content.trim();
     }
-
-    const data = await response.json();
-    const rawAnswer = data.choices[0].message.content.trim();
 
     if (rawAnswer === "NO_INFO" || rawAnswer.includes("NO_INFO")) {
       console.log(`[RAG Grounding] Grounding Check Failed (NO_INFO). Fallback triggered.`);

@@ -10,7 +10,8 @@ const IV_LEN = 12; // GCM Standard
  * @returns Object containing encrypted data, IV, and Authentication Tag
  */
 export function encrypt(text: string): { encryptedData: string; iv: string; authTag: string } {
-  const secretKey = process.env.ENCRYPTION_KEY || "rival_secret_default_key_32_bytes_len";
+  const secretKey = process.env.ENCRYPTION_KEY;
+  if (!secretKey) throw new Error("ENCRYPTION_KEY environment variable is missing");
   
   let key: Buffer;
   if (secretKey.length === KEY_LEN * 2) {
@@ -44,7 +45,8 @@ export function encrypt(text: string): { encryptedData: string; iv: string; auth
  * @returns Decrypted plain text string
  */
 export function decrypt(encryptedData: string, ivHex: string, authTagHex: string): string {
-  const secretKey = process.env.ENCRYPTION_KEY || "rival_secret_default_key_32_bytes_len";
+  const secretKey = process.env.ENCRYPTION_KEY;
+  if (!secretKey) throw new Error("ENCRYPTION_KEY environment variable is missing");
 
   let key: Buffer;
   if (secretKey.length === KEY_LEN * 2) {

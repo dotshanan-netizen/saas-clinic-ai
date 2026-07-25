@@ -1,0 +1,10 @@
+{
+  "adminEmail": "admin@lumina.com",
+  "adminName": "Lumina Admin",
+  "clinicSlug": "lumina-aesthetics",
+  "clinicName": "Lumina Aesthetics",
+  "contactPhone": "+966500000000",
+  "description": "عيادة لومينا للتجميل - الرياض",
+  "logoUrl": "https://example.com/lumina-logo.png",
+  "adminPassword": "Password123!"
+}

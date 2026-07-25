@@ -168,7 +168,7 @@ test.describe("Meta WhatsApp Webhook API Tests", () => {
     }
 
     expect(conversation).not.toBeNull();
-    const messages = conversation!.messages as any[];
+    const messages = conversation!.messages as Record<string, unknown>[];
     expect(messages.length).toBe(2); // 1 User + 1 Assistant
     expect(messages[0].role).toBe("user");
     expect(messages[0].content).toBe("السلام عليكم، حابة أحجز موعد");

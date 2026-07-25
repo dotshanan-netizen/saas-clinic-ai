@@ -1,126 +1,95 @@
 import "dotenv/config";
-import { PrismaClient } from "@/generated/prisma";
-import readline from "readline";
-import { hashPassword } from "@/lib/auth";
-
-const prisma = new PrismaClient();
-
-const rl = readline.createInterface({
-  input: process.stdin,
-  output: process.stdout,
-});
-
-const question = (query: string): Promise<string> => {
-  return new Promise((resolve) => rl.question(query, resolve));
-};
+import fs from "fs/promises";
+import path from "path";
+import { TenantOnboardingSchema } from "../lib/validations/onboarding";
+import { TenantOnboardingService } from "../lib/services/TenantOnboardingService";
+import { Logger } from "../lib/infrastructure/logging/Logger";
 
 async function main() {
-  console.log("=== CLINIC TENANT ONBOARDING WIZARD ===");
+  const args = process.argv.slice(2);
+  let isDryRun = false;
+  let tenantDir = "";
+
+  for (const arg of args) {
+    if (arg === "--dry-run") {
+      isDryRun = true;
+    } else if (arg === "--apply") {
+      isDryRun = false;
+    } else if (!arg.startsWith("--")) {
+      tenantDir = arg;
+    }
+  }
+
+  if (!tenantDir) {
+    console.error("Usage: npm run onboard -- [--dry-run | --apply] <path-to-tenant-dir>");
+    process.exit(1);
+  }
+
+  Logger.info(`[CLI] Reading tenant package from ${tenantDir}`);
+  let manifest;
+  try {
+    const manifestContent = await fs.readFile(path.join(process.cwd(), tenantDir, "manifest.json"), "utf-8");
+    manifest = JSON.parse(manifestContent);
+  } catch (error) {
+    Logger.error(`[CLI] Failed to read manifest.json: ${error}`);
+    process.exit(1);
+  }
+
+  Logger.info(`[CLI] Assembling payload for ${manifest.tenantSlug}...`);
   
-  const name = await question("Enter Clinic Name (e.g. عيادة التميز): ");
-  if (!name.trim()) throw new Error("Clinic name is required");
+  const readJson = async (fileName: string) => {
+    try {
+      if (!fileName) return undefined;
+      const content = await fs.readFile(path.join(process.cwd(), tenantDir, fileName), "utf-8");
+      return JSON.parse(content);
+    } catch {
+      return undefined;
+    }
+  };
 
-  const slug = await question("Enter Clinic Slug (e.g. excellence-clinic): ");
-  if (!slug.trim()) throw new Error("Clinic slug is required");
+  const clinicData = await readJson(manifest.files.clinic) || {};
+  const branchesData = await readJson(manifest.files.branches) || [];
+  const servicesData = await readJson(manifest.files.services) || [];
+  const doctorsData = await readJson(manifest.files.doctors) || [];
+  const aiSettingsData = await readJson(manifest.files.aiSettings) || {};
 
-  const email = await question("Enter Admin Email (e.g. admin@excellence.com): ");
-  if (!email.trim()) throw new Error("Admin email is required");
+  const rawData = {
+    ...clinicData,
+    ...aiSettingsData,
+    branches: branchesData,
+    services: servicesData,
+    doctors: doctorsData,
+  };
 
-  const password = await question("Enter Admin Password: ");
-  if (!password.trim()) throw new Error("Admin password is required");
-
-  // Validate slug uniqueness
-  const existing = await prisma.clinic.findUnique({ where: { slug } });
-  if (existing) {
-    throw new Error(`Slug '${slug}' is already in use by clinic: ${existing.name}`);
+  Logger.info("[CLI] Validating payload...");
+  const parsed = TenantOnboardingSchema.safeParse(rawData);
+  if (!parsed.success) {
+    Logger.error("[CLI] Validation Failed:");
+    console.error(JSON.stringify(parsed.error.format(), null, 2));
+    process.exit(1);
   }
 
-  // Validate email uniqueness
-  const existingUser = await prisma.user.findUnique({ where: { email } });
-  if (existingUser) {
-    throw new Error(`Email '${email}' is already registered`);
+  if (isDryRun) {
+    Logger.info("[CLI] DRY RUN: Validation successful. No changes made.");
+    console.log(JSON.stringify(parsed.data, null, 2));
+    process.exit(0);
   }
 
-  const phoneId = await question("Enter WhatsApp Phone ID (optional): ");
-  const verifyToken = await question("Enter WhatsApp Verify Token (optional): ");
-  const wabaId = await question("Enter WhatsApp Business Account ID (WABA ID) (optional): ");
-  const customPrompt = await question("Enter Custom AI System Prompt (optional, press enter for default): ");
+  try {
+    Logger.info("[CLI] Executing onboarding transaction...");
+    const clinic = await TenantOnboardingService.onboard(parsed.data);
+    Logger.info(`[CLI] Successfully onboarded clinic: ${clinic.name} (${clinic.slug})`);
+    
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { PrismaClient } = require("@prisma/client");
+    const prisma = new PrismaClient();
+    await prisma.$disconnect();
 
-  console.log("\nCreating clinic in database...");
-
-  const clinic = await prisma.clinic.create({
-    data: {
-      name: name.trim(),
-      slug: slug.trim(),
-      whatsappPhoneId: phoneId.trim() || null,
-      whatsappVerifyToken: verifyToken.trim() || null,
-      whatsappWabaId: wabaId.trim() || null,
-      customPrompt: customPrompt.trim() || `أنت موظف استقبال لبق ومحترف في عيادة ${name.trim()}. هدفك حجز مواعيد للعملاء بجمع أسمائهم، خدماتهم، فرعهم، والوقت المفضل.`,
-      countryCode: "SA",
-      allowedCountries: "SA",
-    },
-  });
-
-  console.log(`\n🎉 Success! Clinic created with ID: ${clinic.id}`);
-  console.log(`Slug: ${clinic.slug}`);
-  console.log(`Name: ${clinic.name}`);
-
-  console.log("\nCreating admin user...");
-  const user = await prisma.user.create({
-    data: {
-      email: email.trim(),
-      passwordHash: hashPassword(password.trim()),
-      name: "Admin User",
-      role: "ADMIN",
-      clinicId: clinic.id,
-    },
-  });
-  console.log(`Admin user created: ${user.email}`);
-
-  // Auto-create a default branch
-  console.log("\nCreating default branch...");
-  const branch = await prisma.branch.create({
-    data: {
-      name: "الفرع الرئيسي",
-      city: "الرياض",
-      address: "العنوان الرئيسي للعيادة",
-      clinicId: clinic.id,
-    },
-  });
-  console.log(`Default branch created: ${branch.name}`);
-
-  // Auto-create default working hours (9am - 9pm, Sat-Thu, Fri closed)
-  console.log("\nCreating default working hours...");
-  const days = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "SATURDAY", "SUNDAY"];
-  for (const day of days) {
-    await prisma.workingHour.create({
-      data: {
-        branchId: branch.id,
-        dayOfWeek: day,
-        startTime: "09:00",
-        endTime: "21:00",
-        isClosed: false,
-      },
-    });
+    process.exit(0);
+  } catch (error) {
+    console.error(error);
+    process.exit(1);
   }
-  await prisma.workingHour.create({
-    data: {
-      branchId: branch.id,
-      dayOfWeek: "FRIDAY",
-      startTime: "09:00",
-      endTime: "21:00",
-      isClosed: true,
-    },
-  });
-  console.log("Working hours created successfully!");
-  console.log("\n=== ONBOARDING COMPLETE ===");
 }
 
-main()
-  .catch((err) => {
-    console.error("\n❌ Onboarding failed:", err.message);
-  })
-  .finally(async () => {
-    rl.close();
-    await prisma.$disconnect();
-  });
+main();

@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 
+export const dynamic = 'force-dynamic';
+
 // GET /api/conversations?clinicSlug=rival-clinic
 export async function GET(request: Request) {
   try {
@@ -41,23 +43,36 @@ export async function GET(request: Request) {
       return NextResponse.json({
         messages: conversation ? conversation.messages : [],
         booking: booking || null,
+        humanTakeover: conversation ? conversation.humanTakeover : false,
       });
     }
 
-    // 2. جلب جميع الحجوزات مرتبة بالأحدث — هذه هي القائمة الرئيسية
-    const bookings = await prisma.booking.findMany({
+    // 2. جلب جميع المحادثات مرتبة بالأحدث (ليست كل المحادثات لها حجز)
+    const conversations = await prisma.conversation.findMany({
+      where: { clinicId: clinic.id },
+      orderBy: { updatedAt: "desc" },
+    });
+
+    console.log(`DEBUG API: Found ${conversations.length} conversations for clinic ${clinic.id}`);
+
+    const activeBookings = await prisma.booking.findMany({
       where: { clinicId: clinic.id },
       orderBy: { createdAt: "desc" },
     });
 
-    const result = bookings.map((b) => ({
-      id: b.id,
-      clientPhone: b.clientPhone,
-      clientName: b.clientName,
-      serviceName: b.serviceName,
-      status: b.status,
-      updatedAt: b.createdAt,
-    }));
+    console.log(`DEBUG API: Found ${activeBookings.length} bookings for clinic ${clinic.id}`);
+
+    const result = conversations.map((conv) => {
+      const booking = activeBookings.find(b => b.clientPhone === conv.clientPhone);
+      return {
+        id: conv.id,
+        clientPhone: conv.clientPhone,
+        clientName: booking?.clientName || null,
+        serviceName: booking?.serviceName || null,
+        status: booking?.status || "NEW",
+        updatedAt: conv.updatedAt,
+      };
+    });
 
     return NextResponse.json(result);
   } catch (error: unknown) {
@@ -155,10 +170,9 @@ export async function POST(request: Request) {
       },
     });
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let history: any[] = [];
+    let history: import("@prisma/client").Prisma.JsonArray = [];
     if (conversation && conversation.messages) {
-      history = conversation.messages as unknown as any[];
+      history = conversation.messages as unknown as import("@prisma/client").Prisma.JsonArray;
     }
 
     // Add assistant reply to history
@@ -167,7 +181,7 @@ export async function POST(request: Request) {
       content: messageText,
       timestamp: new Date().toISOString(),
     };
-    history.push(assistantMsg);
+    history.push(assistantMsg as unknown as import("@prisma/client").Prisma.JsonObject);
 
     await prisma.conversation.upsert({
       where: {

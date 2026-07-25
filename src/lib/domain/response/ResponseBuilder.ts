@@ -7,7 +7,7 @@ export class ResponseBuilder {
     clinic: ClinicWithCatalog,
     journeyStage: JourneyStage,
     policy: PolicyOutput,
-    currentState: any
+    currentState: Record<string, unknown>
   ): string {
     const branchesList = clinic.branches.map((b) => b.name).join(" - ");
     const servicesList = clinic.services.map((s) => `${s.name} (${s.price} ريال)`).join(" - ");

@@ -42,11 +42,77 @@ export class ConversationEngine {
       history = conversation.messages as unknown as ChatMessage[];
     }
 
+    // Check if Human Takeover is active
+    if (conversation && conversation.humanTakeover) {
+      Logger.info(`[ConversationEngine] Human Takeover is active for ${clientPhone}. Skipping AI.`, { 
+        requestId,
+        clinicId: clinic.id, 
+        clientPhone 
+      });
+      // Just record the user message and return without a response
+      const userMsg: ChatMessage = {
+        role: "user",
+        content: message,
+        timestamp: new Date().toISOString(),
+        messageId: requestId !== "untracked-request" ? requestId : undefined,
+      };
+      history.push(userMsg);
+      
+      const MAX_DB_MESSAGES = 50;
+      const historyToSave = history.length > MAX_DB_MESSAGES ? history.slice(-MAX_DB_MESSAGES) : history;
+      
+      await prisma.conversation.upsert({
+        where: {
+          clinicId_clientPhone: {
+            clinicId: clinic.id,
+            clientPhone,
+          },
+        },
+        update: {
+          messages: historyToSave as unknown as Prisma.InputJsonValue,
+        },
+        create: {
+          clientPhone,
+          clinicId: clinic.id,
+          messages: historyToSave as unknown as Prisma.InputJsonValue,
+          humanTakeover: true,
+        },
+      });
+
+      return {
+        response: "", // Return empty string so no message is sent via Meta
+        humanTakeover: true,
+        intent: "HumanTakeoverActive",
+        stage: "Human Mode",
+        policy: "Human Policy"
+      };
+    }
+
+    // 1.5 Deduplication Check (Business-Level Idempotency)
+    // Prevents Worker/Queue retries from sending duplicate AI responses
+    if (requestId && requestId !== "untracked-request") {
+      const existingUserMsgIndex = history.findIndex(msg => msg.messageId === requestId);
+      if (existingUserMsgIndex !== -1) {
+        Logger.info(`[ConversationEngine] Deduplicated repeated messageId: ${requestId}`, { requestId, clinicId: clinic.id, clientPhone });
+        let recoveredResponse = "عذراً، تم استلام رسالتك مسبقاً وهي قيد المعالجة. 🌸";
+        if (existingUserMsgIndex + 1 < history.length && history[existingUserMsgIndex + 1].role === "assistant") {
+          recoveredResponse = history[existingUserMsgIndex + 1].content;
+        }
+        return { 
+          response: recoveredResponse,
+          intent: "Duplicate",
+          stage: "Duplicate",
+          policy: "Duplicate"
+        };
+      }
+    }
+
     // Add user message to history
     const userMsg: ChatMessage = {
       role: "user",
       content: message,
       timestamp: new Date().toISOString(),
+      messageId: requestId !== "untracked-request" ? requestId : undefined,
     };
     history.push(userMsg);
 
@@ -125,9 +191,38 @@ export class ConversationEngine {
     let modifiedBookingData;
     let llmLatency = 0;
 
+    // Fetch dynamic slots if a doctor is currently selected
+    let availableSlotsText = "";
+    if (currentState.doctorName) {
+      const { BookingService } = await import("@/lib/domain/BookingService");
+      const slotsData = await BookingService.getAvailableSlots(clinic.id, currentState.doctorName as string);
+      
+      const lines = [];
+      for (const [day, times] of Object.entries(slotsData)) {
+        lines.push(`${day}: ${times.join(" - ")}`);
+      }
+      availableSlotsText = lines.join("\n");
+      if (!availableSlotsText) {
+        availableSlotsText = "لا توجد أوقات متاحة لهذا الطبيب حالياً.";
+      }
+    }
+
+    // Fetch Business Profile (GENERAL_INFO) from KB
+    let businessProfile = "";
+    try {
+      const kbItem = await prisma.knowledgeBase.findFirst({
+        where: { clinicId: clinic.id, category: "GENERAL_INFO", deletedAt: null },
+      });
+      if (kbItem) {
+        businessProfile = kbItem.content;
+      }
+    } catch (e) {
+      Logger.error("Failed to fetch business profile from KB", e, { requestId, clinicId: clinic.id, clientPhone });
+    }
+
     const llmStart = Date.now();
     try {
-      aiResult = await AIProvider.classifyIntentAndExtractData(clinic, historyToModel, source, currentState);
+      aiResult = await AIProvider.classifyIntentAndExtractData(clinic, historyToModel, source, currentState, availableSlotsText, businessProfile);
       console.log("[DEBUG AIResult]:", JSON.stringify(aiResult, null, 2));
       llmLatency = Date.now() - llmStart;
 
@@ -164,7 +259,7 @@ export class ConversationEngine {
       bookingCreated = result.bookingCreated;
       bookingModified = result.bookingModified || false;
       modifiedBookingData = result.modifiedBookingData || aiResult.bookingData;
-      aiResult.intent = result.resolvedIntent as any;
+      aiResult.intent = result.resolvedIntent as import("@/lib/infrastructure/ai/AIProvider").AIIntent;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (error: any) {
       llmLatency = Date.now() - llmStart;
@@ -184,12 +279,17 @@ export class ConversationEngine {
         errorCode: error.code || "AI_FAILURE"
       });
 
-      return {
-        response: "عذراً، أواجه مشكلة تقنية حالياً. سيقوم فريق الاستقبال بالرد عليك قريباً. 🌸",
-        intent: "Inquiry",
-        stage: "Exploration",
-        policy: "General Policy"
-      };
+      finalResponse = "عذراً، أواجه مشكلة تقنية حالياً. سيقوم فريق الاستقبال بالرد عليك قريباً. 🌸";
+      aiResult = {
+        intent: "HumanTakeover",
+        response: finalResponse,
+        humanTakeover: true,
+        requiresRag: false,
+      } as any;
+      
+      bookingCreated = false;
+      bookingModified = false;
+      modifiedBookingData = currentState;
     }
 
     // Save assistant message to history
@@ -203,6 +303,9 @@ export class ConversationEngine {
     history.push(assistantMsg);
 
     // 4. Update Conversation in DB via upsert to prevent unique constraint race conditions
+    const MAX_DB_MESSAGES = 50;
+    const historyToSave = history.length > MAX_DB_MESSAGES ? history.slice(-MAX_DB_MESSAGES) : history;
+
     await prisma.conversation.upsert({
       where: {
         clinicId_clientPhone: {
@@ -211,12 +314,14 @@ export class ConversationEngine {
         },
       },
       update: {
-        messages: history as unknown as Prisma.InputJsonValue,
+        messages: historyToSave as unknown as Prisma.InputJsonValue,
+        humanTakeover: aiResult.humanTakeover ? true : undefined,
       },
       create: {
         clientPhone,
         clinicId: clinic.id,
-        messages: history as unknown as Prisma.InputJsonValue,
+        messages: historyToSave as unknown as Prisma.InputJsonValue,
+        humanTakeover: aiResult.humanTakeover ? true : false,
       },
     });
 

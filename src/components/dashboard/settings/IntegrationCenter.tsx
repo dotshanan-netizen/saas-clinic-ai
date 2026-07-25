@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 
 interface ClinicConfig {
   name: string;
@@ -66,15 +66,7 @@ export function IntegrationCenter() {
 
   // Meta integration fields status
   const [qualityRating, setQualityRating] = useState<string>("UNKNOWN");
-  const [verifiedName, setVerifiedName] = useState<string>("");
-  const [phoneStatus, setPhoneStatus] = useState<string>("UNKNOWN");
-
-  // Load config on mount
-  useEffect(() => {
-    loadConfig();
-  }, []);
-
-  const loadConfig = async () => {
+  const loadConfig = useCallback(async () => {
     try {
       setLoading(true);
       setErrorMsg(null);
@@ -91,31 +83,21 @@ export function IntegrationCenter() {
       // If already has token, go to dashboard
       if (data.hasWhatsappToken && data.whatsappPhoneId && data.whatsappWabaId) {
         setView("dashboard");
-        // Fetch phone details asynchronously to update dashboard status
-        fetchLivePhoneDetails(data.whatsappPhoneId);
       } else {
         setView("catalog");
       }
-    } catch (err: any) {
-      setErrorMsg(err.message || "حدث خطأ غير متوقع");
+    } catch (err: unknown) {
+      setErrorMsg(err instanceof Error ? err.message : "حدث خطأ غير متوقع");
     } finally {
       setLoading(false);
     }
-  };
+  }, [clinicSlug]);
 
-  // Fetch live phone details from Meta Graph API using local server proxy or direct fetch if token is decrypted
-  const fetchLivePhoneDetails = async (phoneId: string) => {
-    try {
-      // Direct call utilizing the token in process.env (or database) via a quick server proxy
-      // For simplicity in this E2E, we query using our check status script logic / database
-      // Here we simulate the status update with real values or default values
-      setQualityRating("GREEN");
-      setVerifiedName("Hdco");
-      setPhoneStatus("CONNECTED");
-    } catch (e) {
-      console.error(e);
-    }
-  };
+  useEffect(() => {
+    loadConfig();
+  }, [loadConfig]);
+
+
 
   // Step 2: Trigger Embedded Signup and Token Verification via Server Proxy
   const handleVerifyTokenAndFetchWabas = async () => {
@@ -146,8 +128,8 @@ export function IntegrationCenter() {
       } else {
         throw new Error("لم يتم العثور على أي حساب أعمال (WABA) مرتبط بحساب فيسبوك هذا");
       }
-    } catch (err: any) {
-      alert(`خطأ: ${err.message}`);
+    } catch (err: unknown) {
+      alert(`خطأ: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setSaving(false);
     }
@@ -252,8 +234,6 @@ export function IntegrationCenter() {
       }
 
       setQualityRating("GREEN");
-      setVerifiedName(phoneData.verified_name || "Hdco");
-      setPhoneStatus(phoneData.status || "CONNECTED");
 
       setSetupProgress(prev => ({ ...prev, phoneVerified: "done", testMsgSent: "running" }));
       await new Promise(r => setTimeout(r, 1500));
@@ -288,8 +268,8 @@ export function IntegrationCenter() {
       
       // Complete!
       setWizardStep(4);
-    } catch (err: any) {
-      setSetupError(err.message || "حدث خطأ أثناء إعداد الربط التلقائي");
+    } catch (err: unknown) {
+      setSetupError(err instanceof Error ? err.message : "حدث خطأ أثناء إعداد الربط التلقائي");
       // Find which step was running and mark it as failed
       setSetupProgress(prev => {
         const next = { ...prev };
@@ -330,8 +310,8 @@ export function IntegrationCenter() {
       setView("catalog");
       setWizardStep(1);
       setInputToken("");
-    } catch (err: any) {
-      setErrorMsg(err.message || "حدث خطأ أثناء فصل القناة");
+    } catch (err: unknown) {
+      setErrorMsg(err instanceof Error ? err.message : "حدث خطأ أثناء فصل القناة");
     } finally {
       setSaving(false);
     }
@@ -361,8 +341,8 @@ export function IntegrationCenter() {
       }
 
       setSuccessMsg("تم حفظ سلوك المساعد الذكي بنجاح! 🤖");
-    } catch (err: any) {
-      setErrorMsg(err.message || "حدث خطأ أثناء الحفظ");
+    } catch (err: unknown) {
+      setErrorMsg(err instanceof Error ? err.message : "حدث خطأ أثناء الحفظ");
     } finally {
       setSaving(false);
     }
@@ -377,8 +357,8 @@ export function IntegrationCenter() {
       // Ping check status script local proxy
       await new Promise(r => setTimeout(r, 1000));
       setSuccessMsg("تم التحقق بنجاح! السيرفر يستقبل POST والاتصال بـ Meta نشط ✅");
-    } catch (e: any) {
-      setErrorMsg("فشل التحقق من الـ Webhook: " + e.message);
+    } catch (e: unknown) {
+      setErrorMsg("فشل التحقق من الـ Webhook: " + (e instanceof Error ? e.message : String(e)));
     } finally {
       setSaving(false);
     }

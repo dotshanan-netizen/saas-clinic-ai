@@ -1,11 +1,15 @@
-import { jwtVerify, SignJWT } from "jose";
+import { jwtVerify, SignJWT, JWTPayload } from "jose";
 import { cookies } from "next/headers";
 
+
 function getSecretKey() {
-  return new TextEncoder().encode("clinova_super_secret_key_2026_mvp");
+  if (!process.env.JWT_SECRET) {
+    throw new Error("JWT_SECRET environment variable is missing");
+  }
+  return new TextEncoder().encode(process.env.JWT_SECRET);
 }
 
-export async function encrypt(payload: any) {
+export async function encrypt(payload: JWTPayload) {
   return await new SignJWT(payload)
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
@@ -13,7 +17,7 @@ export async function encrypt(payload: any) {
     .sign(getSecretKey());
 }
 
-export async function decrypt(token: string): Promise<any> {
+export async function decrypt(token: string): Promise<JWTPayload> {
   const { payload } = await jwtVerify(token, getSecretKey(), {
     algorithms: ["HS256"],
   });
@@ -27,22 +31,9 @@ export async function getSession() {
   
   try {
     return await decrypt(sessionToken);
-  } catch (err) {
+  } catch {
     return null;
   }
 }
 
-export function hashPassword(password: string): string {
-  const crypto = require("crypto");
-  const salt = crypto.randomBytes(16).toString("hex");
-  const hash = crypto.pbkdf2Sync(password, salt, 1000, 64, "sha512").toString("hex");
-  return `${salt}:${hash}`;
-}
 
-export function verifyPassword(password: string, storedHash: string): boolean {
-  const crypto = require("crypto");
-  const [salt, hash] = storedHash.split(":");
-  if (!salt || !hash) return false;
-  const verifyHash = crypto.pbkdf2Sync(password, salt, 1000, 64, "sha512").toString("hex");
-  return hash === verifyHash;
-}

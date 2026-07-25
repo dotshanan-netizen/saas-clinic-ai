@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-require-imports */
 const lib = require('libphonenumber-js');
 console.log(Object.keys(lib));
 console.log("parsePhoneNumberFromString typeof:", typeof lib.parsePhoneNumberFromString);

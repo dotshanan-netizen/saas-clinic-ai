@@ -2,6 +2,15 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import { z } from "zod";
+
+const BranchSchema = z.object({
+  name: z.string().min(3, "يجب أن يكون اسم الفرع 3 حروف على الأقل"),
+  city: z.string().min(2, "يجب اختيار المدينة"),
+  address: z.string().min(5, "يجب كتابة عنوان الفرع بالتفصيل (5 حروف على الأقل)"),
+  phone: z.string().optional(),
+  status: z.enum(["ACTIVE", "INACTIVE"]),
+});
 
 interface Branch {
   id: string;
@@ -54,14 +63,17 @@ export function BranchForm({ branch, onClose, onSaved }: BranchFormProps) {
     setSaving(true);
     setErrorMsg(null);
 
-    // Basic Validation
-    if (name.trim().length < 3) {
-      setErrorMsg("يجب أن يكون اسم الفرع 3 حروف على الأقل");
-      setSaving(false);
-      return;
-    }
-    if (address.trim().length < 5) {
-      setErrorMsg("يجب كتابة عنوان الفرع بالتفصيل (5 حروف على الأقل)");
+    const payloadRaw = {
+      name,
+      city,
+      address,
+      phone: phone || undefined,
+      status,
+    };
+
+    const parsed = BranchSchema.safeParse(payloadRaw);
+    if (!parsed.success) {
+      setErrorMsg(parsed.error.issues[0].message);
       setSaving(false);
       return;
     }
@@ -70,11 +82,7 @@ export function BranchForm({ branch, onClose, onSaved }: BranchFormProps) {
       const payload = {
         clinicSlug,
         id: branch?.id || undefined,
-        name,
-        city,
-        address,
-        phone: phone || undefined,
-        status,
+        ...parsed.data,
       };
 
       const res = await fetch("/api/clinic/branches", {

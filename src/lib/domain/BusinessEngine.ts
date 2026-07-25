@@ -1,3 +1,4 @@
+import { Prisma } from "@/generated/prisma";
 import { prisma } from "../db";
 import { ClinicWithCatalog, ExtractedBookingData, validateBookingData, extractSaudiPhone } from "./types";
 import { Logger } from "../infrastructure/logging/Logger";
@@ -54,12 +55,14 @@ export class BusinessEngine {
     }
 
     // Robust Regex-based Fallback Extraction when AI returns empty/null fields but userMessage contains booking info
-    let extractedName = aiResult.bookingData?.clientName || currentState.clientName;
-    let extractedPhone = aiResult.bookingData?.clientPhone || currentState.clientPhone;
-    let extractedService = aiResult.bookingData?.serviceName || currentState.serviceName;
-    let extractedDoctor = aiResult.bookingData?.doctorName || currentState.doctorName;
-    let extractedBranch = aiResult.bookingData?.branchName || currentState.branchName;
-    let extractedTime = aiResult.bookingData?.timeSlot || currentState.timeSlot;
+    const isUnset = (val: string | null | undefined) => !val || val === "null" || val === "غير محدد" || val === "";
+
+    let extractedName = !isUnset(aiResult.bookingData?.clientName) ? aiResult.bookingData!.clientName : currentState.clientName;
+    let extractedPhone = !isUnset(aiResult.bookingData?.clientPhone) ? aiResult.bookingData!.clientPhone : currentState.clientPhone;
+    let extractedService = !isUnset(aiResult.bookingData?.serviceName) ? aiResult.bookingData!.serviceName : currentState.serviceName;
+    let extractedDoctor = !isUnset(aiResult.bookingData?.doctorName) ? aiResult.bookingData!.doctorName : currentState.doctorName;
+    let extractedBranch = !isUnset(aiResult.bookingData?.branchName) ? aiResult.bookingData!.branchName : currentState.branchName;
+    let extractedTime = !isUnset(aiResult.bookingData?.timeSlot) ? aiResult.bookingData!.timeSlot : currentState.timeSlot;
 
     if (!extractedName || extractedName === "null") {
       const nameMatch = userMessage.match(/باسم\s+([^\s]+)/) || userMessage.match(/الاسم\s+([^\s]+)/);
@@ -81,8 +84,11 @@ export class BusinessEngine {
       const branchMatch = clinic.branches.find(b => userMessage.includes(b.name));
       if (branchMatch) extractedBranch = branchMatch.name;
     }
-    if (!extractedTime) {
-      const timeMatch = userMessage.match(/(?:يوم\s+)?[^\s]*(?:الأحد|الاثنين|الثلاثاء|الأربعاء|الخميس|السبت|الجمعة)\s+(?:الساعة\s+)?\d+\s+(?:صباحاً|مساءً|ظهراً|عصراً)/) || userMessage.match(/\d+\s+(?:صباحاً|مساءً|ظهراً|عصراً)/);
+    
+    // Check if extractedTime is valid. If it's missing or fails normalization, try fallback.
+    const { TimeNormalizer } = await import("./TimeNormalizer");
+    if (!extractedTime || !TimeNormalizer.normalize(extractedTime)) {
+      const timeMatch = userMessage.match(/(?:يوم\s+)?[^\s]*(?:الأحد|الاحد|الاثنين|الإثنين|الثلاثاء|الأربعاء|الاربعاء|الخميس|السبت|الجمعة|الجمعه)\s+(?:الساعة\s+)?\d+(?::\d+)?\s+(?:صباحاً|مساءً|ظهراً|عصراً|الصباح|الصبح|المساء|الليل|بالليل|م|ص)/) || userMessage.match(/\d+(?::\d+)?\s+(?:صباحاً|مساءً|ظهراً|عصراً|الصباح|الصبح|المساء|الليل|بالليل|م|ص)/);
       if (timeMatch) extractedTime = timeMatch[0].trim();
     }
 
@@ -104,10 +110,18 @@ export class BusinessEngine {
       modifiedBookingData.timeSlot = extractedTime;
     }
 
-    const isNewBookingRequest = userMessage.match(/حجز|أحجز|حابة أحجز|ابغى احجز|أبي أحجز/i) && !userMessage.match(/تعديل|تغيير|تغير/i);
+    const isNewBookingRequest = userMessage.match(/حجز|أحجز|حابة أحجز|ابغى احجز|أبي أحجز|أبغى أحجز/i) && !userMessage.match(/تعديل|تغيير|تغير/i);
     let resolvedIntent = aiResult.intent;
     if (isNewBookingRequest && userMessage.match(/التواصل|رقم|جوال/i) && userMessage.match(/(?:05|966)\d{7,10}/)) {
       resolvedIntent = "BookAppointment";
+    }
+    
+    if (resolvedIntent === "Unknown" || resolvedIntent === "unknown" || !resolvedIntent) {
+      if (isNewBookingRequest) {
+        resolvedIntent = "BookAppointment";
+      } else {
+        resolvedIntent = "Inquiry";
+      }
     }
 
     if (resolvedIntent === "BookAppointment" || resolvedIntent === "ModifyBooking") {
@@ -152,6 +166,29 @@ export class BusinessEngine {
         const isModification = resolvedIntent === "ModifyBooking" || userMessage.match(/تغيير|تعديل|أغير|أعدل|خليه|بدل|غيرت/i);
         let activeBooking = null;
 
+        // -- DOUBLE BOOKING GUARD START --
+        const { BookingService } = await import("./BookingService");
+        const availableSlots = await BookingService.getAvailableSlots(clinic.id, validation.normalizedDoctor!);
+        let slotIsAvailable = false;
+        
+        for (const slots of Object.values(availableSlots)) {
+          if (slots.includes(validation.cleanTimeSlot!)) {
+            slotIsAvailable = true;
+            break;
+          }
+        }
+        
+        if (!slotIsAvailable) {
+          finalResponse = `عذراً، الوقت الذي اخترته (${validation.cleanTimeSlot}) لم يعد متاحاً. أرجو اختيار وقت آخر من الأوقات المتاحة. 🌷`;
+          if (modifiedBookingData) {
+            modifiedBookingData.timeSlot = null;
+          }
+          bookingCreated = false;
+          bookingModified = false;
+          return { finalResponse, bookingCreated, bookingModified, modifiedBookingData, resolvedIntent };
+        }
+        // -- DOUBLE BOOKING GUARD END --
+
         if (isModification) {
           activeBooking = await prisma.booking.findFirst({
             where: {
@@ -189,38 +226,69 @@ export class BusinessEngine {
           });
 
           if (!existingBooking) {
-            await prisma.booking.create({
-              data: {
-                clientName: validation.cleanName!,
-                clientPhone: finalPhone,
-                serviceName: validation.normalizedService!,
-                doctorName: validation.normalizedDoctor!,
-                branchName: validation.normalizedBranch!,
-                timeSlot: validation.cleanTimeSlot!,
-                source: source,
-                clinicId: clinic.id,
-                status: "PENDING",
-              },
-            });
-            bookingCreated = true;
+            try {
+              await prisma.$transaction(async (tx) => {
+                const conflict = await tx.booking.findFirst({
+                  where: {
+                    clinicId: clinic.id,
+                    doctorName: validation.normalizedDoctor!,
+                    timeSlot: validation.cleanTimeSlot!,
+                    status: { in: ["PENDING", "CONFIRMED"] }
+                  }
+                });
+                
+                if (conflict) {
+                  throw new Error("DOUBLE_BOOKING");
+                }
 
-            const defaultCountry = clinic.countryCode || "SA";
-            const userPhoneNormalized = extractSaudiPhone(clientPhone, defaultCountry);
-            const isContactPhoneDifferent = finalPhone !== userPhoneNormalized && finalPhone !== clientPhone;
+                await tx.booking.create({
+                  data: {
+                    clientName: validation.cleanName!,
+                    clientPhone: finalPhone,
+                    serviceName: validation.normalizedService!,
+                    doctorName: validation.normalizedDoctor!,
+                    branchName: validation.normalizedBranch!,
+                    timeSlot: validation.cleanTimeSlot!,
+                    source: source,
+                    clinicId: clinic.id,
+                    status: "PENDING",
+                  },
+                });
+              }, {
+                isolationLevel: Prisma.TransactionIsolationLevel.Serializable
+              });
+              
+              bookingCreated = true;
 
-            let contactNote = "";
-            const isForOther = userMessage.match(/زوجتي|والدتي|أمي|اختي|أختي|بنتي|ابنتي|صديقتي|ابني|ولدي/i);
+              const defaultCountry = clinic.countryCode || "SA";
+              const userPhoneNormalized = extractSaudiPhone(clientPhone, defaultCountry);
+              const isContactPhoneDifferent = finalPhone !== userPhoneNormalized && finalPhone !== clientPhone;
 
-            if (isForOther && !isContactPhoneDifferent) {
-              const relation = userMessage.match(/زوجتي/i) ? "زوجتك" :
-                               userMessage.match(/والدتي|أمي/i) ? "والدتك" :
-                               userMessage.match(/اختي|أختي/i) ? "أختك" :
-                               userMessage.match(/بنتي|ابنتي/i) ? "ابنتك" :
-                               userMessage.match(/صديقتي/i) ? "صديقتك" : "الشخص المعني";
-              contactNote = `\n\nسأتواصل مع ${relation} على نفس رقم الواتساب الحالي، وإذا كنت تفضل رقماً آخر للتواصل، أرجو تزويدي به 🌷`;
+              let contactNote = "";
+              const isForOther = userMessage.match(/زوجتي|والدتي|أمي|اختي|أختي|بنتي|ابنتي|صديقتي|ابني|ولدي/i);
+
+              if (isForOther && !isContactPhoneDifferent) {
+                const relation = userMessage.match(/زوجتي/i) ? "زوجتك" :
+                                userMessage.match(/والدتي|أمي/i) ? "والدتك" :
+                                userMessage.match(/اختي|أختي/i) ? "أختك" :
+                                userMessage.match(/بنتي|ابنتي/i) ? "ابنتك" :
+                                userMessage.match(/صديقتي/i) ? "صديقتك" : "الشخص المعني";
+                contactNote = `\n\nسأتواصل مع ${relation} على نفس رقم الواتساب الحالي، وإذا كنت تفضل رقماً آخر للتواصل، أرجو تزويدي به 🌷`;
+              }
+
+              finalResponse = `وصلني طلب الحجز بنجاح 🌷\n\n✅ الاسم: ${validation.cleanName}\n✅ الجوال: ${finalPhone}\n✅ الخدمة: ${validation.normalizedService}\n✅ الطبيب: ${validation.normalizedDoctor}\n✅ الفرع: ${validation.normalizedBranch}\n✅ الوقت المفضل: ${validation.cleanTimeSlot}\n\nتم إرسال طلبك لموظف الاستقبال، وسيتواصل معك لتأكيد الموعد النهائي حسب التوفر. 🌸${contactNote}`;
+            } catch (err: any) {
+              if (err.message === "DOUBLE_BOOKING" || err.code === "P2034") {
+                finalResponse = `عذراً، الوقت الذي اخترته (${validation.cleanTimeSlot}) تم حجزه للتو من قبل مراجع آخر. أرجو اختيار وقت آخر من الأوقات المتاحة. 🌷`;
+                if (modifiedBookingData) {
+                  modifiedBookingData.timeSlot = null;
+                }
+                bookingCreated = false;
+                bookingModified = false;
+                return { finalResponse, bookingCreated, bookingModified, modifiedBookingData, resolvedIntent };
+              }
+              throw err;
             }
-
-            finalResponse = `وصلني طلب الحجز بنجاح 🌷\n\n✅ الاسم: ${validation.cleanName}\n✅ الجوال: ${finalPhone}\n✅ الخدمة: ${validation.normalizedService}\n✅ الطبيب: ${validation.normalizedDoctor}\n✅ الفرع: ${validation.normalizedBranch}\n✅ الوقت المفضل: ${validation.cleanTimeSlot}\n\nتم إرسال طلبك لموظف الاستقبال، وسيتواصل معك لتأكيد الموعد النهائي حسب التوفر. 🌸${contactNote}`;
           } else {
             finalResponse = `لدينا طلب حجز مُسجّل مسبقاً بنفس التفاصيل يا ${validation.cleanName} 🌷 تم إرسال طلبك بالفعل للاستقبال. إذا أردت إنشاء طلب جديد أو تعديل الحجز، أخبرني وسأبدأ معك طلبًا جديدًا.`;
           }
@@ -289,6 +357,7 @@ export class BusinessEngine {
       finalResponse = "تم إيقاف الرد الآلي وتحويل محادثتك لموظف الاستقبال البشري فوراً لمساعدتك. سيقوم بالتواصل معك في أقرب وقت. 👩‍💻";
       bookingCreated = false;
       bookingModified = false;
+      aiResult.humanTakeover = true; // Ensure flag is set for backend
       modifiedBookingData = {
         clientName: null,
         clientPhone: null,

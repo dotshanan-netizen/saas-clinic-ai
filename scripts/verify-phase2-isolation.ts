@@ -82,7 +82,7 @@ async function setupFixtures() {
     data: {
       clientPhone: "+966511111111",
       clinicId: clinicA.id,
-      messages: [{ role: "user", content: "مرحبا من عيادة ألفا" }] as any,
+      messages: [{ role: "user", content: "مرحبا من عيادة ألفا" }] as import("@prisma/client").Prisma.JsonArray,
     },
   });
 
@@ -223,3 +223,5 @@ runIsolationTests().catch(async (err) => {
   origError("Fatal error:", err.message);
   process.exit(1);
 });
+
+export {};
