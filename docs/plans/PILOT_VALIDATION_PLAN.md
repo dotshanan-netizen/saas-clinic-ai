@@ -65,10 +65,38 @@ Dialogue and phrasing issues are recorded here and **must not** be worked on dur
 
 ---
 
-## 🏆 Success Criteria
+## 🏆 Pilot Exit Criteria
 
-This milestone is considered fully complete and ready for Pilot launch when:
-* **End-to-End booking flow** is 100% reliable under production workloads.
-* **Scheduling decisions** (availability, assignments) are mathematically correct.
-* **Dashboard state transitions** (takeover, confirm, edit) update instantly.
-* **No blocking production bugs** remain in the core pipeline.
+The Pilot milestone will **NOT** be declared closed until all of the following exit criteria are verified and satisfied:
+
+### 1. Booking Flow Checklist
+* [ ] **Creation:** The booking record is successfully created in the database.
+* [ ] **Dashboard Visibility:** The booking instantly appears in the receptionist Dashboard.
+* [ ] **Context Linking:** The booking is correctly linked to the active WhatsApp conversation record.
+* [ ] **Verification/Approval:** The receptionist can successfully review and confirm/edit the booking from the Dashboard.
+* [ ] **Notification:** The patient receives the final confirmation notification message on WhatsApp.
+
+### 2. Scheduling Logic Checklist
+* [ ] **Overlapping:** Booked slots are successfully rejected for double-booking.
+* [ ] **Work Hours:** Slots outside working hours are rejected and prevented.
+* [ ] **Doctor Schedules:** Doctor closed days and holidays are strictly respected.
+* [ ] **ANY Doctor:** Selection of "ANY" merges schedules and maps to the available doctor dynamically.
+* [ ] **Alternative Suggestions:** System recommends correct alternative slots when a conflict is encountered.
+
+### 3. Dashboard Integration Checklist
+* [ ] **AI Summary:** Real-time AI context summaries are populated on new bookings.
+* [ ] **Context Panel:** The staff sidebar/panel updates context and customer information dynamically.
+* [ ] **Customer Profile:** Patient name, phone number, and branch mapping are accurate.
+* [ ] **Takeover Sync:** Human takeover and AI-resume switches synchronize instantly under strict multi-tenant isolation.
+
+### 4. Stability Constraints Checklist
+* [ ] **E2E Stability:** No exception breaks the booking lifecycle from webhook delivery to WhatsApp output.
+* [ ] **Zero Blocking Bugs:** No unresolved P0 (blocking crash) or P1 (critical functionality error) exists in production.
+
+### 5. Deferred Items (Not exit criteria, postponed to post-pilot)
+* [ ] Question/dialogue flow ordering optimizations.
+* [ ] Polishing agent friendly wording and translation overrides.
+* [ ] Handling advanced colloquial terms (e.g. relative days "بكرة").
+* [ ] Processing meridiem shorthand indicator parsing (e.g. "ص"/"م").
+* [ ] Agent conversational tone refinement.
+* [ ] Prompt instructions tuning.
