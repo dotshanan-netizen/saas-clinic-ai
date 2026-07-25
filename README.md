@@ -4,6 +4,14 @@
 
 ---
 
+## 📚 فهرس التوثيق الهندسي (Master Documentation Index)
+
+لتسهيل مراجعة البنية المعمارية وقواعد التطوير للمنصة، تم تنظيم كافة المستندات والتقارير الرسمية:
+* **[دليل التوثيق المعماري والرئيسي (Master Documentation Index)](file:///D:/saas-clinic-ai/docs/README.md)** - البوابة الرئيسية لكافة مستندات النظام.
+* **[المبادئ الهندسية لـ Clinova](file:///D:/saas-clinic-ai/docs/architecture/ENGINEERING_PRINCIPLES.md)** - الدستور البرمجي للمشروع وضوابط التحقق الخماسية.
+
+---
+
 ## 🏗️ البنية المعمارية للنظام (System Architecture Overview)
 
 يعتمد تطبيق **ADMIND** على تصميم معماري نظيف وعزل طبقات متين (Clean Architecture & Layers Separation):

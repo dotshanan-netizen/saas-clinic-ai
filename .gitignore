@@ -56,3 +56,12 @@ cloudflared.config.yml
 scratch/
 dump.rdb
 tunnel-url.txt
+
+# Binaries and archives
+/tools/cloudflared/cloudflared.exe
+/tools/redis/Redis-x64/
+/tools/redis/Redis-x64.zip
+/tools/redis/dump.rdb
+
+# Logs
+/docs/archive/logs/
