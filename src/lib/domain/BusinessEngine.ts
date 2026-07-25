@@ -232,7 +232,7 @@ export class BusinessEngine {
 
         // -- DOUBLE BOOKING GUARD START --
         const { BookingService } = await import("./BookingService");
-        const availableSlots = await BookingService.getAvailableSlots(clinic.id, validation.normalizedDoctor!);
+        const availableSlots = await BookingService.getAvailableSlots(clinic.id, validation.normalizedDoctor!, validation.normalizedService || undefined);
         let slotIsAvailable = false;
         
         for (const slots of Object.values(availableSlots)) {
@@ -264,18 +264,45 @@ export class BusinessEngine {
           });
         }
 
+        let finalDoctorName = validation.normalizedDoctor!;
+        if ((finalDoctorName === "أي طبيب" || finalDoctorName === "ANY") && validation.normalizedService) {
+          const { BookingService } = await import("./BookingService");
+          const doctorServices = await prisma.doctorService.findMany({
+            where: {
+              service: { clinicId: clinic.id, name: validation.normalizedService, status: "ACTIVE" },
+              doctor: { status: "ACTIVE" }
+            },
+            include: { doctor: true }
+          });
+          const candidateDoctors = doctorServices.map((ds) => ds.doctor);
+          for (const doc of candidateDoctors) {
+            const docAvailableSlots = await BookingService.getAvailableSlots(clinic.id, doc.name);
+            let hasSlot = false;
+            for (const slots of Object.values(docAvailableSlots)) {
+              if (slots.includes(validation.cleanTimeSlot!)) {
+                hasSlot = true;
+                break;
+              }
+            }
+            if (hasSlot) {
+              finalDoctorName = doc.name;
+              break;
+            }
+          }
+        }
+
         if (activeBooking) {
           await prisma.booking.update({
             where: { id: activeBooking.id },
             data: {
               serviceName: validation.normalizedService!,
-              doctorName: validation.normalizedDoctor!,
+              doctorName: finalDoctorName,
               branchName: validation.normalizedBranch!,
               timeSlot: validation.cleanTimeSlot!,
             },
           });
           bookingModified = true;
-          finalResponse = `وصلني تعديل الحجز بنجاح 🌷\n\n✅ الاسم: ${validation.cleanName}\n✅ الجوال: ${finalPhone}\n✅ الخدمة: ${validation.normalizedService}\n✅ الطبيب: ${validation.normalizedDoctor}\n✅ الفرع: ${validation.normalizedBranch}\n✅ الوقت المفضل: ${validation.cleanTimeSlot}\n\nتم تحديث موعدك، وسيتواصل معك موظف الاستقبال للتأكيد النهائي. 🌸`;
+          finalResponse = `وصلني تعديل الحجز بنجاح 🌷\n\n✅ الاسم: ${validation.cleanName}\n✅ الجوال: ${finalPhone}\n✅ الخدمة: ${validation.normalizedService}\n✅ الطبيب: ${finalDoctorName}\n✅ الفرع: ${validation.normalizedBranch}\n✅ الوقت المفضل: ${validation.cleanTimeSlot}\n\nتم تحديث موعدك، وسيتواصل معك موظف الاستقبال للتأكيد النهائي. 🌸`;
         } else {
           // Check for duplicates
           const existingBooking = await prisma.booking.findFirst({
@@ -283,7 +310,7 @@ export class BusinessEngine {
               clinicId: clinic.id,
               clientPhone: finalPhone,
               serviceName: validation.normalizedService!,
-              doctorName: validation.normalizedDoctor!,
+              doctorName: finalDoctorName,
               branchName: validation.normalizedBranch!,
               timeSlot: validation.cleanTimeSlot!,
             },
@@ -295,7 +322,7 @@ export class BusinessEngine {
                 const conflict = await tx.booking.findFirst({
                   where: {
                     clinicId: clinic.id,
-                    doctorName: validation.normalizedDoctor!,
+                    doctorName: finalDoctorName,
                     timeSlot: validation.cleanTimeSlot!,
                     status: { in: ["PENDING", "CONFIRMED"] }
                   }
@@ -310,7 +337,7 @@ export class BusinessEngine {
                     clientName: validation.cleanName!,
                     clientPhone: finalPhone,
                     serviceName: validation.normalizedService!,
-                    doctorName: validation.normalizedDoctor!,
+                    doctorName: finalDoctorName,
                     branchName: validation.normalizedBranch!,
                     timeSlot: validation.cleanTimeSlot!,
                     source: source,
@@ -340,7 +367,7 @@ export class BusinessEngine {
                 contactNote = `\n\nسأتواصل مع ${relation} على نفس رقم الواتساب الحالي، وإذا كنت تفضل رقماً آخر للتواصل، أرجو تزويدي به 🌷`;
               }
 
-              finalResponse = `وصلني طلب الحجز بنجاح 🌷\n\n✅ الاسم: ${validation.cleanName}\n✅ الجوال: ${finalPhone}\n✅ الخدمة: ${validation.normalizedService}\n✅ الطبيب: ${validation.normalizedDoctor}\n✅ الفرع: ${validation.normalizedBranch}\n✅ الوقت المفضل: ${validation.cleanTimeSlot}\n\nتم إرسال طلبك لموظف الاستقبال، وسيتواصل معك لتأكيد الموعد النهائي حسب التوفر. 🌸${contactNote}`;
+              finalResponse = `وصلني طلب الحجز بنجاح 🌷\n\n✅ الاسم: ${validation.cleanName}\n✅ الجوال: ${finalPhone}\n✅ الخدمة: ${validation.normalizedService}\n✅ الطبيب: ${finalDoctorName}\n✅ الفرع: ${validation.normalizedBranch}\n✅ الوقت المفضل: ${validation.cleanTimeSlot}\n\nتم إرسال طلبك لموظف الاستقبال، وسيتواصل معك لتأكيد الموعد النهائي حسب التوفر. 🌸${contactNote}`;
             } catch (err: any) {
               if (err.message === "DOUBLE_BOOKING" || err.code === "P2034") {
                 finalResponse = `عذراً، الوقت الذي اخترته (${validation.cleanTimeSlot}) تم حجزه للتو من قبل مراجع آخر. أرجو اختيار وقت آخر من الأوقات المتاحة. 🌷`;
@@ -364,7 +391,37 @@ export class BusinessEngine {
         if (sanitizedData.clientPhone && !validation.normalizedPhone && !validation.phoneRestricted) {
           finalResponse = "رقم الجوال يبدو غير صحيح. أرجو تزويدنا برقم تواصل صحيح بالصيغة الدولية أو المحلية 🌷";
         } else if (isHallucinatedSuccess || validation.missingFields.length > 0) {
-          finalResponse = `عذراً، حتى أتمكن من تأكيد الحجز، لا يزال ينقصنا معرفة: ${validation.missingFields.join(" و ")} 🌷`;
+          // Define priority order for prompting
+          const order = ["الاسم", "رقم الجوال", "الخدمة المطلوبة", "الفرع المفضل", "الطبيب المفضل", "الوقت المناسب"];
+          let nextField = "";
+          for (const f of order) {
+            const match = validation.missingFields.find(mf => mf.startsWith(f));
+            if (match) {
+              nextField = match;
+              break;
+            }
+          }
+          if (!nextField) {
+            nextField = validation.missingFields[0];
+          }
+
+          if (nextField === "الاسم") {
+            finalResponse = "تسعدنا خدمتكِ يا قلبي! 🌸 ممكن تفيديني باسمكِ الكريم للتسجيل؟";
+          } else if (nextField === "رقم الجوال") {
+            finalResponse = "يا هلا بكِ! 🌸 ممكن رقم الجوال للتواصل وتأكيد الحجز؟";
+          } else if (nextField.startsWith("رقم جوال للتواصل من")) {
+            finalResponse = `الرجاء تزويدنا برقم تواصل صحيح من إحدى الدول المدعومة 🌷`;
+          } else if (nextField === "الخدمة المطلوبة") {
+            finalResponse = "يا هلا بكِ في عيادة ريفال! 🌸 وش الخدمة أو الجلسة اللي حابة تحجزيها اليوم؟ (مثل البوتكس، الفيلر، تنظيف البشرة أو ليزر)";
+          } else if (nextField === "الفرع المفضل") {
+            finalResponse = "من عيوني! 🌸 في أي فرع تفضلين الحجز؟ عندنا فرع الصحافة وفرع التحلية بالرياض.";
+          } else if (nextField === "الطبيب المفضل") {
+            finalResponse = "أبشري من عيوني! 🌸 هل تفضلين طبيبة/أخصائية معينة للجلسة أم تبحثين عن أول موعد متاح مع أي طبيب؟";
+          } else if (nextField === "الوقت المناسب") {
+            finalResponse = "تمام يا قلبي! 🌸 تحبين موعدكِ يكون في أي يوم؟ وأي وقت يناسبكِ (صباحي أم مسائي)؟";
+          } else {
+            finalResponse = `عذراً، حتى أتمكن من تأكيد الحجز، لا يزال ينقصنا معرفة: ${nextField} 🌷`;
+          }
         }
 
         if (modifiedBookingData) {
@@ -372,6 +429,7 @@ export class BusinessEngine {
           if (validation.missingFields.includes("رقم الجوال الصحيح") || validation.phoneRestricted) modifiedBookingData.clientPhone = null;
           if (validation.missingFields.includes("الخدمة المطلوبة")) modifiedBookingData.serviceName = null;
           if (validation.missingFields.includes("الفرع المفضل")) modifiedBookingData.branchName = null;
+          if (validation.missingFields.includes("الطبيب المفضل")) modifiedBookingData.doctorName = null;
           if (validation.missingFields.includes("الوقت المناسب")) modifiedBookingData.timeSlot = null;
         }
       }

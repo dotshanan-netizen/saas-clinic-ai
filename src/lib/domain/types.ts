@@ -178,7 +178,39 @@ export function validateBookingData(
   const branchNames = clinic.branches.map((b) => b.name);
 
   const service = normalizeToOfficial(data.serviceName, serviceNames);
-  const doctor = normalizeToOfficial(data.doctorName, doctorNames) || "غير محدد";
+  
+  // Find doctors offering the selected service
+  let serviceDoctors: typeof clinic.doctors = [];
+  if (service) {
+    serviceDoctors = clinic.doctors.filter((d) => {
+      if (!d.services || d.services.length === 0) return false;
+      return d.services.some((ds) => ds.service.name === service);
+    });
+  }
+
+  let doctor: string | null = null;
+  const rawDoctorName = sanitizeAIValue(data.doctorName);
+  
+  if (rawDoctorName) {
+    const isAnyDoctor = rawDoctorName.match(/أي طبيب|أي دكتور|أي أخصائي|أيها|أياً كان|أيا كان|أي واحد|الكل|أول موعد متاح|any|anyone/i);
+    if (isAnyDoctor) {
+      doctor = "أي طبيب";
+    } else {
+      doctor = normalizeToOfficial(rawDoctorName, doctorNames);
+    }
+  }
+
+  if (!doctor && service) {
+    if (serviceDoctors.length === 1) {
+      doctor = serviceDoctors[0].name;
+      console.log(`[AutoResolveDoctor] Resolved service '${service}' to single doctor: '${doctor}'`);
+    } else if (serviceDoctors.length > 1) {
+      // doctor remains null (missing)
+    } else {
+      doctor = "أي طبيب";
+    }
+  }
+
   const branch = normalizeToOfficial(data.branchName, branchNames);
   const rawTimeSlot = sanitizeAIValue(data.timeSlot);
   const timeSlot = TimeNormalizer.normalize(rawTimeSlot, previousTimeSlot);
@@ -215,6 +247,12 @@ export function validateBookingData(
 
   if (!service) missingFields.push("الخدمة المطلوبة");
   if (!branch) missingFields.push("الفرع المفضل");
+  
+  // Doctor is missing if service has multiple doctors and none is chosen (or "ANY" is not chosen)
+  if (service && serviceDoctors.length > 1 && !doctor) {
+    missingFields.push("الطبيب المفضل");
+  }
+
   if (!timeSlot) missingFields.push("الوقت المناسب");
 
   return {
@@ -222,7 +260,7 @@ export function validateBookingData(
     missingFields,
     normalizedPhone: phone,
     normalizedService: service,
-    normalizedDoctor: doctor,
+    normalizedDoctor: doctor || "أي طبيب",
     normalizedBranch: branch,
     cleanName,
     cleanTimeSlot: timeSlot,
