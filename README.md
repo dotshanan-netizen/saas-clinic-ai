@@ -7,7 +7,7 @@
 ## 📚 فهرس التوثيق الهندسي (Master Documentation Index)
 
 لتسهيل مراجعة البنية المعمارية وقواعد التطوير للمنصة، تم تنظيم كافة المستندات والتقارير الرسمية:
-* **[دليل التوثيق المعماري والرئيسي (Master Documentation Index)](file:///D:/saas-clinic-ai/docs/README.md)** - البوابة الرئيسية لكافة مستندات النظام.
+* **[البوابة الرئيسية للمستندات والخطط (Clinova Documentation Hub - HOME)](file:///D:/saas-clinic-ai/docs/HOME.md)** - الفهرس الموحد والمسار الكامل لكافة ملفات المشروع.
 * **[المبادئ الهندسية لـ Clinova](file:///D:/saas-clinic-ai/docs/architecture/ENGINEERING_PRINCIPLES.md)** - الدستور البرمجي للمشروع وضوابط التحقق الخماسية.
 
 ---
