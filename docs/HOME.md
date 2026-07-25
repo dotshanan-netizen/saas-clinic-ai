@@ -13,6 +13,7 @@ Welcome to the central information index for the Clinova platform. Use this hub 
 * [Infrastructure & Deployment Guide](file:///D:/saas-clinic-ai/docs/architecture/INFRASTRUCTURE.md) - Vercel hosting, Neon Database, & env setup.
 
 ### 📋 2. Plans & Inventory
+* [Pilot End-to-End Validation Plan](file:///D:/saas-clinic-ai/docs/plans/PILOT_VALIDATION_PLAN.md) - Official QA Focus, scheduling engine cases, and Pilot success criteria.
 * [Auth Implementation Plan](file:///D:/saas-clinic-ai/docs/plans/AUTH_IMPLEMENTATION_PLAN.md) - Design for dashboard authentication and JWT integration.
 * [MVP Test Plan](file:///D:/saas-clinic-ai/docs/plans/MVP_TEST_PLAN.md) - Testing plan details.
 * [Project Inventory](file:///D:/saas-clinic-ai/docs/plans/PROJECT_INVENTORY.md) - File inventory.
