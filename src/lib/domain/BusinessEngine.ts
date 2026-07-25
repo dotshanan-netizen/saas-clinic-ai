@@ -210,7 +210,7 @@ export class BusinessEngine {
       // ─────────────────────────────────────────────────────────────────────
 
       // Execute Central Validation Gate
-      const validation = validateBookingData(sanitizedData, clientPhone, clinic);
+      const validation = validateBookingData(sanitizedData, clientPhone, clinic, currentState.timeSlot);
 
       console.log(JSON.stringify({
         stage: "VALIDATION_RESULT",
@@ -416,12 +416,13 @@ export class BusinessEngine {
         const { BookingService } = await import("./BookingService");
         const slotsData = await BookingService.getAvailableSlots(clinic.id, currentState.doctorName as string);
         if (Object.keys(slotsData).length === 0) {
-          finalResponse = `لا توجد أوقات متاحة حالياً مع ${currentState.doctorName} في الأيام السبعة القادمة. هل تودين اختيار تاريخ آخر؟ 🌷`;
+          finalResponse = `لا توجد أوقات متاحة حالياً مع ${currentState.doctorName} خلال الـ 30 يوماً القادمة. هل تودين اختيار تاريخ آخر؟ 🌷`;
         } else {
-          const lines = Object.entries(slotsData).map(([day, times]) =>
-            `‫${day}: ${(times as string[]).join(" - ")}‪`
-          );
-          finalResponse = `الأوقات المتاحة مع ${currentState.doctorName} خلال الأيام السبعة القادمة 🌷:\n\n${lines.join("\n")}\n\nأي وقت يناسبكِ؟`;
+          const lines = Object.entries(slotsData).map(([day, times]) => {
+            const cleanTimes = (times as string[]).map(t => t.replace(day, "").trim());
+            return `‫${day}: ${cleanTimes.join(" - ")}‪`;
+          });
+          finalResponse = `الأوقات المتاحة مع ${currentState.doctorName} 🌷:\n\n${lines.join("\n")}\n\nأي وقت يناسبكِ؟`;
         }
       } else if (aiResult.requiresRag) {
         try {

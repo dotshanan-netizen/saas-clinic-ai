@@ -42,39 +42,59 @@ export class BookingService {
     const today = startOfDay(new Date());
     const availableSlots: Record<string, string[]> = {};
 
-    for (let i = 0; i < 7; i++) {
-      const date = addDays(today, i);
-      const enDay = format(date, "EEEE");
-      const upperDay = enDay.toUpperCase();
-      const arDay = dayMap[enDay];
+    const monthsMapArabic = [
+      "يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو",
+      "يوليو", "أغسطس", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر"
+    ];
 
-      const schedule = doctor.schedules.find((s) => s.dayOfWeek === upperDay);
-      if (!schedule || schedule.isClosed) continue;
+    let limit = 7;
+    let foundSlots = false;
 
-      const [startHour, startMin] = schedule.startTime.split(":").map(Number);
-      const [endHour, endMin] = schedule.endTime.split(":").map(Number);
+    while (limit <= 30 && !foundSlots) {
+      for (let i = limit - 7; i < limit; i++) {
+        const date = addDays(today, i);
+        const enDay = format(date, "EEEE");
+        const upperDay = enDay.toUpperCase();
+        const arDay = dayMap[enDay];
 
-      const slots: string[] = [];
-      let currentHour = startHour;
-      let currentMin = startMin;
+        const schedule = doctor.schedules.find((s) => s.dayOfWeek === upperDay);
+        if (!schedule || schedule.isClosed) continue;
 
-      while (currentHour < endHour || (currentHour === endHour && currentMin < endMin)) {
-        const timeString = formatArabicTime(currentHour, currentMin);
-        const slotString = `${arDay} ${timeString}`;
+        const [startHour, startMin] = schedule.startTime.split(":").map(Number);
+        const [endHour, endMin] = schedule.endTime.split(":").map(Number);
 
-        if (!bookedSlots.has(slotString)) {
-          slots.push(slotString);
+        const slots: string[] = [];
+        let currentHour = startHour;
+        let currentMin = startMin;
+
+        const dayNum = date.getDate();
+        const arMonth = monthsMapArabic[date.getMonth()];
+        const arDayWithDate = `${arDay} (${dayNum} ${arMonth})`;
+
+        while (currentHour < endHour || (currentHour === endHour && currentMin < endMin)) {
+          const timeString = formatArabicTime(currentHour, currentMin);
+          const slotString = `${arDayWithDate} ${timeString}`;
+
+          if (!bookedSlots.has(slotString)) {
+            slots.push(slotString);
+          }
+
+          currentMin += 30;
+          if (currentMin >= 60) {
+            currentHour += 1;
+            currentMin -= 60;
+          }
         }
 
-        currentMin += 30;
-        if (currentMin >= 60) {
-          currentHour += 1;
-          currentMin -= 60;
+        if (slots.length > 0) {
+          availableSlots[arDayWithDate] = slots;
         }
       }
 
-      if (slots.length > 0) {
-        availableSlots[arDay] = slots;
+      if (Object.keys(availableSlots).length > 0) {
+        foundSlots = true;
+      } else {
+        limit += 7;
       }
     }
 

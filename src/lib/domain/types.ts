@@ -158,7 +158,8 @@ export interface BookingValidationResult {
 export function validateBookingData(
   data: ExtractedBookingData,
   fallbackPhone: string,
-  clinic: ClinicWithCatalog
+  clinic: ClinicWithCatalog,
+  previousTimeSlot?: string | null
 ): BookingValidationResult {
   const cleanName = sanitizeAIValue(data.clientName);
   const rawPhone = sanitizeAIValue(data.clientPhone);
@@ -180,7 +181,7 @@ export function validateBookingData(
   const doctor = normalizeToOfficial(data.doctorName, doctorNames) || "غير محدد";
   const branch = normalizeToOfficial(data.branchName, branchNames);
   const rawTimeSlot = sanitizeAIValue(data.timeSlot);
-  const timeSlot = TimeNormalizer.normalize(rawTimeSlot);
+  const timeSlot = TimeNormalizer.normalize(rawTimeSlot, previousTimeSlot);
   console.log(`[TimeNormalizer] raw: '${rawTimeSlot}' -> normalized: '${timeSlot}'`);
 
   const missingFields: string[] = [];
