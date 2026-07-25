@@ -47,10 +47,9 @@ export class Logger {
       const lowercaseKey = key.toLowerCase();
       if (lowercaseKey.includes("phone")) {
         sanitized[key] = typeof val === "string" ? Logger.maskPhone(val) : val;
-      } else if (lowercaseKey.includes("name") || lowercaseKey.includes("clientname")) {
+      } else if (lowercaseKey === "name" || lowercaseKey === "clientname") {
         sanitized[key] = typeof val === "string" ? Logger.maskName(val) : val;
       } else if (
-        lowercaseKey === "message" ||
         lowercaseKey === "content" ||
         lowercaseKey === "response" ||
         lowercaseKey === "finalresponse" ||

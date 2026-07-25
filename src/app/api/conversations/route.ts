@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { Prisma } from "@/generated/prisma";
 
 export const dynamic = 'force-dynamic';
 
@@ -170,9 +171,9 @@ export async function POST(request: Request) {
       },
     });
 
-    let history: import("@prisma/client").Prisma.JsonArray = [];
+    let history: Prisma.JsonArray = [];
     if (conversation && conversation.messages) {
-      history = conversation.messages as unknown as import("@prisma/client").Prisma.JsonArray;
+      history = conversation.messages as unknown as Prisma.JsonArray;
     }
 
     // Add assistant reply to history
@@ -181,7 +182,7 @@ export async function POST(request: Request) {
       content: messageText,
       timestamp: new Date().toISOString(),
     };
-    history.push(assistantMsg as unknown as import("@prisma/client").Prisma.JsonObject);
+    history.push(assistantMsg as unknown as Prisma.JsonObject);
 
     await prisma.conversation.upsert({
       where: {

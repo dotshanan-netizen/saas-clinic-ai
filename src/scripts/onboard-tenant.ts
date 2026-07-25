@@ -3,7 +3,10 @@ import fs from "fs/promises";
 import path from "path";
 import { TenantOnboardingSchema } from "../lib/validations/onboarding";
 import { TenantOnboardingService } from "../lib/services/TenantOnboardingService";
-import { Logger } from "../lib/infrastructure/logging/Logger";
+const Logger = {
+  info: (msg: string) => console.log(`[INFO] ${msg}`),
+  error: (msg: string) => console.error(`[ERROR] ${msg}`),
+};
 
 async function main() {
   const args = process.argv.slice(2);

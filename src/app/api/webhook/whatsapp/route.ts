@@ -2,6 +2,8 @@ import { prisma } from "@/lib/db";
 import crypto from "crypto";
 import { jobDispatcher } from "@/lib/infrastructure/queue/BullMQJobDispatcher";
 
+export const maxDuration = 60; // Allow up to 60 seconds on Vercel to prevent OpenAI timeouts
+
 // GET: Meta Webhook verification
 export async function GET(request: Request) {
   try {
@@ -225,12 +227,12 @@ export async function POST(request: Request) {
         if (storedToken) {
           const { decrypt } = await import("@/lib/encryption");
           const parts = storedToken.split(":");
-          if (parts.length === 3) {
+          if (parts.length === 3 && finalResponse.response) {
             const [iv, authTag, encryptedData] = parts;
             const decryptedToken = decrypt(encryptedData, iv, authTag);
 
             const metaResponse = await fetch(
-              `https://graph.facebook.com/v18.0/${clinic.whatsappPhoneId}/messages`,
+              `https://graph.facebook.com/v19.0/${phoneNumberId}/messages`,
               {
                 method: "POST",
                 headers: {

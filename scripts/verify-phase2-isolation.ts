@@ -5,6 +5,7 @@
  * All tests must pass 100%.
  */
 import { prisma } from "../src/lib/db";
+import { Prisma } from "../src/generated/prisma";
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Test Infrastructure
@@ -82,7 +83,7 @@ async function setupFixtures() {
     data: {
       clientPhone: "+966511111111",
       clinicId: clinicA.id,
-      messages: [{ role: "user", content: "مرحبا من عيادة ألفا" }] as import("@prisma/client").Prisma.JsonArray,
+      messages: [{ role: "user", content: "مرحبا من عيادة ألفا" }] as Prisma.JsonArray,
     },
   });
 

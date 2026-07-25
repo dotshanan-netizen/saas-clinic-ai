@@ -190,7 +190,7 @@ export function validateBookingData(
   
   // Phone validations
   if (!phone) {
-    missingFields.push("رقم الجوال الصحيح");
+    missingFields.push("رقم الجوال");
   } else {
     try {
       const isMockTestPhone = phone.includes("000000") || phone.startsWith("+9665000");
@@ -198,18 +198,16 @@ export function validateBookingData(
         // Check allowed country constraints ONLY in production env
         const isProd = process.env.NODE_ENV === "production";
         if (isProd) {
-          // International dynamic restriction check
           const phoneNumberObj = parsePhoneNumberFromString(phone);
           const country = phoneNumberObj?.country?.toUpperCase() || "";
           
           if (!allowedList.includes(country)) {
-            missingFields.push("رقم جوال سعودي/مقبول");
             phoneRestricted = true;
+            missingFields.push(`رقم جوال للتواصل من (${allowedStr})`);
           }
         }
       }
     } catch (e) {
-      console.error("Phone parsing error:", e);
       missingFields.push("رقم الجوال الصحيح");
     }
   }

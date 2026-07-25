@@ -46,6 +46,12 @@ export const TenantOnboardingSchema = z.object({
   // KB File path (optional for script)
   knowledgeBaseFilePath: z.string().optional(),
 
+  // Optional knowledge base list
+  knowledgeBase: z.array(z.object({
+    category: z.string(),
+    content: z.string(),
+  })).optional(),
+
   // Nested entities
   branches: z.array(BranchOnboardingSchema).default([]),
   services: z.array(ServiceOnboardingSchema).default([]),

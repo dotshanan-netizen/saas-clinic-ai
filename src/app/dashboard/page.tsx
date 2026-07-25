@@ -252,7 +252,7 @@ export default function Dashboard() {
 
         <div className="flex items-center gap-3">
           <button
-            onClick={fetchConversations}
+            onClick={() => fetchConversations()}
             className="p-2 px-4 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-zinc-300 hover:text-zinc-100 transition-all text-xs font-semibold flex items-center gap-2 cursor-pointer border border-zinc-800 hover:border-zinc-700 shadow-md"
           >
             🔄 تحديث البيانات

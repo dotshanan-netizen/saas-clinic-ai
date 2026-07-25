@@ -1,12 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { TenantOnboardingService } from "../../lib/services/TenantOnboardingService";
 import { TenantOnboardingPayload } from "../../lib/validations/onboarding";
-import { PrismaClient } from "../../generated/prisma";
+import { prisma } from "../../lib/db";
 import { encrypt } from "../../lib/encryption";
 import bcrypt from "bcryptjs";
 
-// Mock Prisma
-vi.mock("../../generated/prisma", () => {
+// Mock Prisma by defining the mock object inside the factory to prevent Vitest initialization ordering issues
+vi.mock("../../lib/db", () => {
   const mockPrisma = {
     clinic: {
       findUnique: vi.fn(),
@@ -28,12 +28,19 @@ vi.mock("../../generated/prisma", () => {
     document: {
       create: vi.fn(),
     },
-    $transaction: vi.fn((callback) => callback(mockPrisma)),
+    doctorSchedule: {
+      create: vi.fn(),
+    },
+    knowledgeBase: {
+      create: vi.fn(),
+    },
+    $transaction: vi.fn(),
   };
-  return { PrismaClient: vi.fn(() => mockPrisma) };
+  mockPrisma.$transaction.mockImplementation((callback) => callback(mockPrisma));
+  return {
+    prisma: mockPrisma,
+  };
 });
-
-const prisma = new PrismaClient();
 
 describe("TenantOnboardingService", () => {
   const validPayload: TenantOnboardingPayload = {
@@ -71,6 +78,9 @@ describe("TenantOnboardingService", () => {
     (prisma.clinic.create as any).mockResolvedValueOnce({ id: "clinic-1", name: "Test Clinic" });
     (prisma.branch.create as any).mockResolvedValueOnce({ id: "branch-1" });
     (prisma.service.create as any).mockResolvedValueOnce({ id: "service-1" });
+    (prisma.doctor.create as any).mockResolvedValueOnce({ id: "doctor-1" });
+    (prisma.doctorSchedule.create as any).mockResolvedValue({ id: "schedule-1" });
+    (prisma.user.create as any).mockResolvedValueOnce({ id: "user-1" });
 
     const clinic = await TenantOnboardingService.onboard(validPayload);
 

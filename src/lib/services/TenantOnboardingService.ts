@@ -170,14 +170,13 @@ export class TenantOnboardingService {
         // Ensure DocumentProcessor handles the upload correctly
         // (Assuming a method to add document directly or using the worker)
         // Here we can just create the document record and let the worker process it
-        const doc = await prisma.document.create({
+        const doc = await prisma.knowledgeDocument.create({
           data: {
             clinicId: clinic.id,
             title: path.basename(resolvedPath),
-            type: "TXT", // simplistic assumption for now
-            status: "PENDING",
-            size: stats.size,
-            url: resolvedPath, // in local it's just a file path
+            category: "GENERAL_INFO",
+            source: resolvedPath, // resolvedPath as source
+            status: "DRAFT", // "DRAFT" is valid KnowledgeStatus
           }
         });
         console.log(`[TenantOnboarding] Document ${doc.id} queued for processing.`);

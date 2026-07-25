@@ -9,8 +9,14 @@ export class TimeNormalizer {
     "السبت": "السبت", "سبت": "السبت"
   };
 
-  private static readonly amWords = ["ص", "صباح", "الصباح", "صبح", "الصبح", "فجر", "الفجر"];
-  private static readonly pmWords = ["م", "مساء", "المساء", "ظهر", "الظهر", "عصر", "العصر", "مغرب", "المغرب", "عشاء", "العشاء", "عشا", "العشا", "ليل", "الليل", "بالليل"];
+  private static readonly relativeDaysMap: Record<string, number> = {
+    "اليوم": 0, "النهارده": 0, "النهاردة": 0,
+    "بكره": 1, "غدا": 1, "الغد": 1, "بكرة": 1,
+    "بعد بكره": 2, "بعد بكرة": 2, "بعد غد": 2
+  };
+
+  private static readonly amWords = ["ص", "صباح", "الصباح", "صبح", "الصبح", "فجر", "الفجر", "صباحاً", "صباحا", "ضحى", "الضحى"];
+  private static readonly pmWords = ["م", "مساء", "المساء", "ظهر", "الظهر", "عصر", "العصر", "مغرب", "المغرب", "عشاء", "العشاء", "عشا", "العشا", "ليل", "الليل", "بالليل", "مساءً", "مساءا", "عصراً", "الظهيرة"];
 
   /**
    * Normalizes a conversational Arabic time string into the official format: "اليوم HH:MM ص/م"
@@ -24,16 +30,31 @@ export class TimeNormalizer {
 
     // 1. Extract Day
     let foundDay: string | null = null;
-    for (const [key, val] of Object.entries(this.daysMap)) {
+    
+    // Check relative days
+    for (const [key, offset] of Object.entries(this.relativeDaysMap)) {
       if (text.includes(key)) {
-        foundDay = val;
+        const d = new Date();
+        d.setDate(d.getDate() + offset);
+        const dayNames = ["الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"];
+        foundDay = dayNames[d.getDay()];
         break;
       }
     }
-    if (!foundDay) return null;
+
+    // Check specific days
+    if (!foundDay) {
+      for (const [key, val] of Object.entries(this.daysMap)) {
+        if (text.includes(key)) {
+          foundDay = val;
+          break;
+        }
+      }
+    }
+    
+    const dayPart = foundDay ? `${foundDay} ` : "";
 
     // 2. Extract Time (Hour and optionally Minute)
-    // Matches 1 to 12, optionally followed by :00, :30, etc.
     const timeRegex = /([0-1]?[0-9])(?:[:.]([0-5][0-9]))?/;
     const timeMatch = text.match(timeRegex);
     if (!timeMatch) return null;
@@ -41,43 +62,32 @@ export class TimeNormalizer {
     let hour = parseInt(timeMatch[1], 10);
     let minute = timeMatch[2] ? parseInt(timeMatch[2], 10) : 0;
 
-    // Validate hour
     if (hour > 12 && hour < 24) {
-      // 24-hour format provided implicitly
       hour = hour % 12;
       if (hour === 0) hour = 12;
-      // If hour > 12, it's definitely PM, but we'll let the PM logic handle it or override it here
     } else if (hour === 0 || hour > 24) {
-      return null; // invalid hour
+      return null;
     }
 
     // 3. Extract Meridiem (AM/PM)
     let isPM = false;
     let isAM = false;
 
-    // Check words
     const words = text.replace(/[:.0-9]/g, " ").split(/\s+/);
     for (const w of words) {
-      if (this.pmWords.includes(w)) {
-        isPM = true;
-        break;
-      }
-      if (this.amWords.includes(w)) {
-        isAM = true;
-        break;
-      }
+      if (this.pmWords.includes(w)) { isPM = true; break; }
+      if (this.amWords.includes(w)) { isAM = true; break; }
     }
 
-    // Default to AM/PM based on context if missing? (e.g. 14 -> 2 PM)
-    if (parseInt(timeMatch[1], 10) >= 12 && parseInt(timeMatch[1], 10) < 24) {
+    const rawHour = parseInt(timeMatch[1], 10);
+    if (rawHour >= 13 && rawHour < 24) {
       isPM = true;
     } else if (!isAM && !isPM) {
-      // If no explicit AM/PM, try to guess based on standard clinic hours
-      // 9, 10, 11 are usually AM. 1, 2, 3, 4, 5, 6 are usually PM.
+      // Context-based guess for clinic hours (typically 9AM–9PM)
       if (hour >= 1 && hour <= 8) {
-        isPM = true; // 1-8 are typically PM (13:00 - 20:00)
+        isPM = true; // 1–8 without context → afternoon (13:00–20:00)
       } else {
-        isAM = true; // 9, 10, 11, 12 are typically AM
+        isAM = true; // 9, 10, 11, 12 → morning
       }
     }
 
@@ -90,6 +100,6 @@ export class TimeNormalizer {
     const hStr = h12.toString().padStart(2, "0");
     const mStr = minute.toString().padStart(2, "0");
 
-    return `${foundDay} ${hStr}:${mStr} ${ampmStr}`;
+    return `${dayPart}${hStr}:${mStr} ${ampmStr}`.trim();
   }
 }

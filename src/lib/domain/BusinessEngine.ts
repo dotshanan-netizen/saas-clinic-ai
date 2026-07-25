@@ -73,23 +73,25 @@ export class BusinessEngine {
       if (phoneMatch) extractedPhone = phoneMatch[1].replace(/[\s-]/g, "");
     }
     if (!extractedService) {
-      const serviceMatch = clinic.services.find(s => userMessage.includes(s.name));
-      if (serviceMatch) extractedService = serviceMatch.name;
+      const foundService = normalizeToOfficial(userMessage, clinic.services.map(s => s.name));
+      if (foundService) extractedService = foundService;
     }
     if (!extractedDoctor) {
-      const doctorMatch = clinic.doctors.find(d => userMessage.includes(d.name));
-      if (doctorMatch) extractedDoctor = doctorMatch.name;
+      const foundDoctor = normalizeToOfficial(userMessage, clinic.doctors.map(d => d.name));
+      if (foundDoctor) extractedDoctor = foundDoctor;
     }
     if (!extractedBranch) {
-      const branchMatch = clinic.branches.find(b => userMessage.includes(b.name));
-      if (branchMatch) extractedBranch = branchMatch.name;
+      // Use fuzzy normalizeToOfficial so "الصحافة" matches "فرع الصحافة"
+      const foundBranch = normalizeToOfficial(userMessage, clinic.branches.map(b => b.name));
+      if (foundBranch) extractedBranch = foundBranch;
     }
-    
+
     // Check if extractedTime is valid. If it's missing or fails normalization, try fallback.
     const { TimeNormalizer } = await import("./TimeNormalizer");
     if (!extractedTime || !TimeNormalizer.normalize(extractedTime)) {
-      const timeMatch = userMessage.match(/(?:يوم\s+)?[^\s]*(?:الأحد|الاحد|الاثنين|الإثنين|الثلاثاء|الأربعاء|الاربعاء|الخميس|السبت|الجمعة|الجمعه)\s+(?:الساعة\s+)?\d+(?::\d+)?\s+(?:صباحاً|مساءً|ظهراً|عصراً|الصباح|الصبح|المساء|الليل|بالليل|م|ص)/) || userMessage.match(/\d+(?::\d+)?\s+(?:صباحاً|مساءً|ظهراً|عصراً|الصباح|الصبح|المساء|الليل|بالليل|م|ص)/);
-      if (timeMatch) extractedTime = timeMatch[0].trim();
+      // Try to extract time from userMessage directly as a fallback
+      const normalizedFromMessage = TimeNormalizer.normalize(userMessage);
+      if (normalizedFromMessage) extractedTime = normalizedFromMessage;
     }
 
     const sanitizedData: ExtractedBookingData = {
@@ -100,6 +102,30 @@ export class BusinessEngine {
       branchName: extractedBranch,
       timeSlot: extractedTime,
     };
+
+    // ── INSTRUMENTATION: Stage 1 — Post-Extraction ─────────────────────────
+    console.log(JSON.stringify({
+      stage: "ENTITY_EXTRACTION",
+      source: "AI+Regex",
+      extracted: {
+        name: extractedName,
+        phone: extractedPhone,
+        service: extractedService,
+        doctor: extractedDoctor,
+        branch: extractedBranch,
+        timeSlot: extractedTime,
+      },
+      aiRaw: {
+        name: aiResult.bookingData?.clientName,
+        branch: aiResult.bookingData?.branchName,
+        timeSlot: aiResult.bookingData?.timeSlot,
+      },
+      currentState: {
+        branch: currentState.branchName,
+        timeSlot: currentState.timeSlot,
+      }
+    }));
+    // ─────────────────────────────────────────────────────────────────────────
 
     if (modifiedBookingData) {
       modifiedBookingData.clientName = extractedName;
@@ -123,6 +149,19 @@ export class BusinessEngine {
         resolvedIntent = "Inquiry";
       }
     }
+
+    // ── BOOKING CONTEXT ESCALATION ────────────────────────────────────────────
+    // If user is already mid-booking (has service/doctor/branch in state) and
+    // sends a short time expression like "طيب لو 10 ص" or "لو 3 مساء",
+    // escalate Inquiry → BookAppointment (they're updating the time slot).
+    const isInBookingContext = !!(currentState.serviceName || currentState.doctorName || currentState.branchName);
+    const isShortTimeUpdate = userMessage.length < 40 && !!(extractedTime) && !userMessage.match(/حجز|إلغاء|تعديل|شكوى|مشكلة/i);
+    if (resolvedIntent === "Inquiry" && isInBookingContext && isShortTimeUpdate) {
+      console.log(`[IntentEscalation] Upgrading Inquiry → BookAppointment (booking context + time update: "${userMessage}")`);
+      resolvedIntent = "BookAppointment";
+    }
+    // ─────────────────────────────────────────────────────────────────────────
+
 
     if (resolvedIntent === "BookAppointment" || resolvedIntent === "ModifyBooking") {
       const branchNames = clinic.branches.map((b) => b.name);
@@ -154,10 +193,35 @@ export class BusinessEngine {
         }
       }
 
+      // ── INSTRUMENTATION: Stage 2 — Pre-Validation (after Merge Guard) ────
+      console.log(JSON.stringify({
+        stage: "PRE_VALIDATION",
+        finalSanitized: {
+          name: sanitizedData.clientName,
+          phone: sanitizedData.clientPhone,
+          service: sanitizedData.serviceName,
+          doctor: sanitizedData.doctorName,
+          branch: sanitizedData.branchName,
+          timeSlot: sanitizedData.timeSlot,
+        },
+        intent: resolvedIntent,
+        userMessage,
+      }));
+      // ─────────────────────────────────────────────────────────────────────
+
       // Execute Central Validation Gate
       const validation = validateBookingData(sanitizedData, clientPhone, clinic);
 
-      console.log(`[ValidationGate] isValid: ${validation.isValid}`);
+      console.log(JSON.stringify({
+        stage: "VALIDATION_RESULT",
+        isValid: validation.isValid,
+        missingFields: validation.missingFields,
+        phoneRestricted: validation.phoneRestricted,
+        normalizedPhone: validation.normalizedPhone,
+        normalizedBranch: validation.normalizedBranch,
+        normalizedService: validation.normalizedService,
+        cleanTimeSlot: validation.cleanTimeSlot,
+      }));
       console.log(`[ValidationGate] Missing: ${validation.missingFields.join(", ")}`);
       console.log(`[ValidationGate] CleanName: '${validation.cleanName}'`);
 
@@ -297,9 +361,7 @@ export class BusinessEngine {
         // HARD GATE BLOCKED BOOKING
         const isHallucinatedSuccess = finalResponse.match(/تم|نجاح|ارسال|رفع|وصلني|حجز/i);
 
-        if (validation.phoneRestricted) {
-          finalResponse = `عذراً، تدعم العيادة حالياً أرقام التواصل الخاصة بالدول التالية فقط: ${clinic.allowedCountries || "SA"} 🌷`;
-        } else if (sanitizedData.clientPhone && !validation.normalizedPhone) {
+        if (sanitizedData.clientPhone && !validation.normalizedPhone && !validation.phoneRestricted) {
           finalResponse = "رقم الجوال يبدو غير صحيح. أرجو تزويدنا برقم تواصل صحيح بالصيغة الدولية أو المحلية 🌷";
         } else if (isHallucinatedSuccess || validation.missingFields.length > 0) {
           finalResponse = `عذراً، حتى أتمكن من تأكيد الحجز، لا يزال ينقصنا معرفة: ${validation.missingFields.join(" و ")} 🌷`;
@@ -344,10 +406,42 @@ export class BusinessEngine {
         }
       }
     } else if (resolvedIntent === "Inquiry") {
-      if (aiResult.requiresRag) {
-        const { RAGPipeline } = await import("./RAGPipeline");
-        const chunks = await RAGPipeline.retrieve(clinic.id, userMessage, 3);
-        finalResponse = await RAGPipeline.generateGroundedResponse(clinic, userMessage, chunks);
+      // ── ROUTING GUARD: Availability questions → BookingService, NOT RAGPipeline ──
+      const isAvailabilityQuery = userMessage.match(
+        /فاضية?|متاح|أوقات|مواعيد|جدول|متى|ايمتى|إيمتى|امتى|وقت|ساعة/i
+      ) && userMessage.match(/دكتور|د.|طبيبة?|موعد|حجز/i);
+
+      if (isAvailabilityQuery && currentState.doctorName) {
+        // Route to BookingService instead of RAGPipeline
+        const { BookingService } = await import("./BookingService");
+        const slotsData = await BookingService.getAvailableSlots(clinic.id, currentState.doctorName as string);
+        if (Object.keys(slotsData).length === 0) {
+          finalResponse = `لا توجد أوقات متاحة حالياً مع ${currentState.doctorName} في الأيام السبعة القادمة. هل تودين اختيار تاريخ آخر؟ 🌷`;
+        } else {
+          const lines = Object.entries(slotsData).map(([day, times]) =>
+            `‫${day}: ${(times as string[]).join(" - ")}‪`
+          );
+          finalResponse = `الأوقات المتاحة مع ${currentState.doctorName} خلال الأيام السبعة القادمة 🌷:\n\n${lines.join("\n")}\n\nأي وقت يناسبكِ؟`;
+        }
+      } else if (aiResult.requiresRag) {
+        try {
+          const { RAGPipeline } = await import("./RAGPipeline");
+          const chunks = await RAGPipeline.retrieve(clinic.id, userMessage, 3);
+          finalResponse = await RAGPipeline.generateGroundedResponse(clinic, userMessage, chunks);
+        } catch (ragError: unknown) {
+          // RAG failure → graceful fallback, do NOT trigger humanTakeover
+          console.error("[RAGPipeline] Failed, falling back to AI response:", ragError);
+          // aiResult.response when requiresRag=true is a bridge message ("سأبحث...") not the real answer
+          // Check if it's a meaningful response (>20 chars and not a placeholder)
+          const isPlaceholder = !aiResult.response
+            || aiResult.response.length < 20
+            || aiResult.response.includes("سأبحث")
+            || aiResult.response.includes("انتظر")
+            || aiResult.response.includes("دعني");
+          finalResponse = isPlaceholder
+            ? "عذراً، لم أتمكن من جلب المعلومات التفصيلية حالياً. يمكنكِ التواصل مباشرة مع الاستقبال للحصول على إجابة دقيقة، أو اسأليني عن شيء آخر وسأكون سعيدة بمساعدتكِ! 🌷"
+            : aiResult.response;
+        }
       } else {
         finalResponse = aiResult.response;
       }
