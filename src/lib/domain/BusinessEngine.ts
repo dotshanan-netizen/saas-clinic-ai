@@ -72,6 +72,8 @@ export class BusinessEngine {
     let extractedDoctor = !isUnset(aiResult.bookingData?.doctorName) ? aiResult.bookingData!.doctorName : currentState.doctorName;
     let extractedBranch = !isUnset(aiResult.bookingData?.branchName) ? aiResult.bookingData!.branchName : currentState.branchName;
     let extractedTime = !isUnset(aiResult.bookingData?.timeSlot) ? aiResult.bookingData!.timeSlot : currentState.timeSlot;
+    // 🚧 TIME_TRACE (Phase A)
+    console.log(`[TIME_TRACE] BusinessEngine.extract: aiTime="${aiResult.bookingData?.timeSlot}" currentStateTime="${currentState.timeSlot}" extractedTime="${extractedTime}"`);
 
     // ── ACTIVE BOOKING SESSION DETECTION ───────────────────────────────────────
     // If the AI returned NO booking intent AND NO booking-specific extracted data,
@@ -124,12 +126,13 @@ export class BusinessEngine {
       if (foundBranch) extractedBranch = foundBranch;
     }
 
-    // Check if extractedTime is valid. If it's missing or fails normalization, try fallback.
-    const { TimeNormalizer } = await import("./TimeNormalizer");
-    if (!extractedTime || !TimeNormalizer.normalize(extractedTime)) {
-      // Try to extract time from userMessage directly as a fallback
+    // Prevent Double Normalization: Only parse time if extractedTime is not set yet.
+    if (!extractedTime || isUnset(extractedTime)) {
+      const { TimeNormalizer } = await import("./TimeNormalizer");
       const normalizedFromMessage = TimeNormalizer.normalize(userMessage);
-      if (normalizedFromMessage) extractedTime = normalizedFromMessage;
+      if (normalizedFromMessage) {
+        extractedTime = normalizedFromMessage;
+      }
     }
 
     const sanitizedData: ExtractedBookingData = {
@@ -295,6 +298,9 @@ export class BusinessEngine {
         }));
         let slotIsAvailable = false;
         
+        // 🚧 TIME_TRACE (Phase A)
+        console.log(`[TIME_TRACE] DoubleBookingGuard: cleanTimeSlot="${validation.cleanTimeSlot}" availableDays=${Object.keys(availableSlots).length}`);
+        
         for (const slots of Object.values(availableSlots)) {
           for (const slot of slots) {
             const timeOnly = validation.cleanTimeSlot?.match(/\d{2}:\d{2}\s+[صم]/)?.[0];
@@ -308,9 +314,10 @@ export class BusinessEngine {
             const endMatch = timeOnly && slot.endsWith(timeOnly);
             const includeMatch = validation.cleanTimeSlot && slot.includes(validation.cleanTimeSlot);
             const hourMatch = userHour !== null && slotHour !== null && userHour === slotHour;
-
+            
+            // 🚧 TIME_TRACE (Phase A)
             if (exactMatch || endMatch || includeMatch || hourMatch) {
-              slotIsAvailable = true;
+              console.log(`[TIME_TRACE] SlotMatched: slot="${slot}" cleanTime="${validation.cleanTimeSlot}" timeOnly="${timeOnly}" userHour=${userHour} slotHour=${slotHour} exact=${exactMatch} end=${endMatch} include=${includeMatch} hour=${hourMatch}`);
               validation.cleanTimeSlot = slot;
               // ARCHITECTURAL RULE: Availability Check does NOT modify
               // Conversation Memory. modifiedBookingData is preserved

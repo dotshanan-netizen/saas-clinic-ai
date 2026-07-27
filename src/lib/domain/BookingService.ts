@@ -74,6 +74,8 @@ export class BookingService {
 
     const doctorsSlots: Record<string, string[]>[] = [];
     const today = startOfDay(new Date());
+    // 🚧 TIME_TRACE (Phase A)
+    console.log(`[TIME_TRACE] BookingService.getAvailableSlots: today=${today.toISOString()} serverTZ=${Intl.DateTimeFormat().resolvedOptions().timeZone} offset=${new Date().getTimezoneOffset()} now=${new Date().toISOString()}`);
 
     const monthsMapArabic = [
       "يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو",

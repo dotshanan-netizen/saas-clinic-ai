@@ -38,15 +38,29 @@ export class TimeNormalizer {
   private static readonly amWords = ["ص", "صباح", "الصباح", "صبح", "الصبح", "فجر", "الفجر", "صباحاً", "صباحا", "ضحى", "الضحى"];
   private static readonly pmWords = ["م", "مساء", "المساء", "ظهر", "الظهر", "عصر", "العصر", "مغرب", "المغرب", "عشاء", "العشاء", "عشا", "العشا", "ليل", "الليل", "بالليل", "مساءً", "مساءا", "عصراً", "الظهيرة"];
 
+  static isNormalized(text: string): boolean {
+    const canonicalFormatRegex = /^(الأحد|الإثنين|الأثنين|الثلاثاء|الأربعاء|الخميس|الجمعة|السبت)\s*\(\s*\d{1,2}\s+[^\)]+\)\s+[0-1]?[0-9]:[0-5][0-9]\s+[صم]$/;
+    return canonicalFormatRegex.test(text);
+  }
+
   /**
    * Normalizes a conversational Arabic time string into the official format: "اليوم (تاريخ) HH:MM ص/م"
    * Example: "الثلاثاء الساعة 11 الصباح" -> "الأحد (26 يوليو) 11:00 ص" (if next Tuesday is July 28)
    * Example: "12 أغسطس الساعة 10 ص" -> "الأربعاء (12 أغسطس) 10:00 ص"
    */
   static normalize(raw: string | null, previousTimeSlot?: string | null): string | null {
+    // 🚧 TIME_TRACE (Phase A — يزال بعد انتهاء التحقيق)
+    const _traceInput = raw;
     if (!raw) return null;
     let text = raw.trim();
     if (!text) return null;
+
+    // 00. Strict Idempotency Check: if it already matches the canonical output format, return it as is.
+    if (this.isNormalized(text)) {
+      // 🚧 TIME_TRACE (Phase A)
+      console.log(`[TIME_TRACE] TimeNormalizer.idempotent: "${_traceInput}" → "${text}"`);
+      return text;
+    }
 
     let resolvedDatePart = "";
     const days = ["الأحد", "الإثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"];
@@ -196,6 +210,10 @@ export class TimeNormalizer {
         normalized = `${datePartMatch[1]} ${normalized}`;
       }
     }
+
+    // 🚧 TIME_TRACE (Phase A — يزال بعد انتهاء التحقيق)
+    const _traceHour = parseInt((_traceInput || "").match(/\d{1,2}/)?.[0] || "0", 10);
+    console.log(`[TIME_TRACE] TimeNormalizer: "${_traceInput}" → hour=${_traceHour} parsedH=${hour} parsedM=${minute} isPM=${isPM} isAM=${isAM} → "${normalized}"`);
 
     return normalized;
   }
