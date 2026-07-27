@@ -65,3 +65,12 @@ tunnel-url.txt
 
 # Logs
 /docs/archive/logs/
+
+# OpenCode agent session continuations
+.omo/
+
+# Temporary test output
+test-output.txt
+
+# Investigation scripts & tools (forensic, diagnostic — not production code)
+scripts/tools/
