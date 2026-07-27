@@ -1,10 +1,10 @@
-// Test: Booking Slot Race Condition
-// File: src/__tests__/integration/booking-race-condition.test.ts
-// Purpose: Simulate concurrent booking attempts on same slot
+import { vi } from "vitest";
+vi.unmock("@/lib/db");
 
 import { prisma } from "@/lib/db";
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { BusinessEngine } from "@/lib/domain/BusinessEngine";
+import { BookingService } from "@/lib/domain/BookingService";
 
 describe("Booking Race Condition - Concurrent Slot Reservation", () => {
   
@@ -16,7 +16,15 @@ describe("Booking Race Condition - Concurrent Slot Reservation", () => {
     // Setup: Create test clinic with doctor
     clinicId = "cmryoendy0000dzrctyxgyf3k"; // Test clinic
     doctorName = "د. سحر";
-    slotTime = "الأحد (26 يوليو) 10:00 ص";
+
+    // Dynamically retrieve the first available slot to avoid hardcoded date expiry
+    const slots = await BookingService.getAvailableSlots(clinicId, doctorName);
+    const dayKeys = Object.keys(slots);
+    if (dayKeys.length === 0) throw new Error("No slots available at all for test");
+    const dayKey = dayKeys[0];
+    const firstSlot = slots[dayKey]?.[0];
+    if (!firstSlot) throw new Error("No slots inside day list");
+    slotTime = firstSlot;
 
     // Clear any existing test bookings
     await prisma.booking.deleteMany({
@@ -52,76 +60,65 @@ describe("Booking Race Condition - Concurrent Slot Reservation", () => {
     if (!clinic) throw new Error("Test clinic not found");
 
     // Simulate 5 concurrent users trying to book SAME slot
-    const concurrentBookingAttempts = [1, 2, 3, 4, 5].map((userId) => {
-      return BookingService.getAvailableSlots(clinic.id, doctorName).then(
-        async (slots) => {
-          // All users see the same slot is available
-          const availableSlot = slots["الأحد"]?.find((s) =>
-            s.includes("10:00 ص")
-          );
+    const concurrentBookingAttempts = [1, 2, 3, 4, 5].map(async (userId) => {
+      const availableSlot = slotTime;
 
-          if (!availableSlot) {
-            throw new Error("Slot not in available list");
-          }
+      // ← RACE CONDITION WINDOW OPENS HERE ←
 
-          // ← RACE CONDITION WINDOW OPENS HERE ←
+      // Simulate AI extraction delay (100-200ms)
+      await new Promise((resolve) => setTimeout(resolve, Math.random() * 100));
 
-          // Simulate AI extraction delay (100-200ms)
-          await new Promise((resolve) => setTimeout(resolve, Math.random() * 100));
+      // All users try to create booking
+      try {
+        const booking = await prisma.$transaction(
+          async (tx) => {
+            const conflict = await tx.booking.findFirst({
+              where: {
+                clinicId: clinic.id,
+                doctorName,
+                timeSlot: availableSlot,
+                status: { in: ["PENDING", "CONFIRMED"] }
+              }
+            });
 
-          // All users try to create booking
-          try {
-            const booking = await prisma.$transaction(
-              async (tx) => {
-                const conflict = await tx.booking.findFirst({
-                  where: {
-                    clinicId: clinic.id,
-                    doctorName,
-                    timeSlot: availableSlot,
-                    status: { in: ["PENDING", "CONFIRMED"] }
-                  }
-                });
-
-                if (conflict) {
-                  throw new Error("DOUBLE_BOOKING");
-                }
-
-                return await tx.booking.create({
-                  data: {
-                    clinicId: clinic.id,
-                    clientName: `User ${userId}`,
-                    clientPhone: `+966501234${String(userId).padStart(3, "0")}`,
-                    serviceName: "ليزر",
-                    doctorName,
-                    branchName: "الصحافة",
-                    timeSlot: availableSlot,
-                    source: "Test",
-                    status: "PENDING"
-                  }
-                });
-              },
-              { isolationLevel: "Serializable" }
-            );
-
-            return {
-              userId,
-              success: true,
-              bookingId: booking.id,
-              error: null
-            };
-          } catch (err: any) {
-            if (err.message === "DOUBLE_BOOKING" || err.code === "P2034") {
-              return {
-                userId,
-                success: false,
-                bookingId: null,
-                error: "DOUBLE_BOOKING"
-              };
+            if (conflict) {
+              throw new Error("DOUBLE_BOOKING");
             }
-            throw err;
-          }
+
+            return await tx.booking.create({
+              data: {
+                clinicId: clinic.id,
+                clientName: `User ${userId}`,
+                clientPhone: `+966501234${String(userId).padStart(3, "0")}`,
+                serviceName: "ليزر",
+                doctorName,
+                branchName: "الصحافة",
+                timeSlot: availableSlot,
+                source: "Test",
+                status: "PENDING"
+              }
+            });
+          },
+          { isolationLevel: "Serializable" }
+        );
+
+        return {
+          userId,
+          success: true,
+          bookingId: booking.id,
+          error: null
+        };
+      } catch (err: any) {
+        if (err.message === "DOUBLE_BOOKING" || err.code === "P2034") {
+          return {
+            userId,
+            success: false,
+            bookingId: null,
+            error: "DOUBLE_BOOKING"
+          };
         }
-      );
+        throw err;
+      }
     });
 
     const results = await Promise.all(concurrentBookingAttempts);

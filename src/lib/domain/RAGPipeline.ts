@@ -21,8 +21,16 @@ export class RAGPipeline {
     minSimilarity: number = 0.5
   ): Promise<RetrievedChunk[]> {
     // 1. Generate embedding for the question
+    // Production Hardening: Validate API key before SDK initialization.
+    // Previously the SDK was initialized with an empty string fallback,
+    // causing unhandled errors on the first API call.
+    const geminiKey = process.env.GEMINI_API_KEY;
+    if (!geminiKey) {
+      console.warn("[RAG] GEMINI_API_KEY not configured, cannot generate embedding. Returning empty.");
+      return [];
+    }
     const { GoogleGenAI } = await import("@google/genai");
-    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
+    const ai = new GoogleGenAI({ apiKey: geminiKey });
     const response = await ai.models.embedContent({
       model: "text-embedding-004",
       contents: question
@@ -35,8 +43,8 @@ export class RAGPipeline {
     // We filter by clinicId and KnowledgeStatus = 'INDEXED' or 'APPROVED' or 'PUBLISHED'
     const query = `
       SELECT 
-        c.id, 
-        c."documentId", 
+        c.id as chunk_id, 
+        c."documentId" as doc_id, 
         c.content,
         d.title,
         d.source,

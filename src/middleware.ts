@@ -4,9 +4,10 @@ import { decrypt, encrypt } from './lib/auth';
 
 export async function middleware(request: NextRequest) {
   const path = request.nextUrl.pathname;
+  const isBypassActive = process.env.BYPASS_AUTH === "true" && process.env.NODE_ENV !== "production";
 
   // Development/Pilot Testing Bypass Logic
-  if (process.env.BYPASS_AUTH === "true") {
+  if (isBypassActive) {
     // 1. If visiting login, redirect to dashboard immediately
     if (path === '/login') {
       return NextResponse.redirect(new URL('/dashboard', request.url));
@@ -86,7 +87,7 @@ export async function middleware(request: NextRequest) {
         if (payload?.clinicId) {
           tenantId = payload.clinicId as string;
         }
-      } else if (process.env.BYPASS_AUTH !== "true") {
+      } else if (!isBypassActive) {
         return NextResponse.json({ error: 'Unauthorized: No session cookie' }, { status: 401 });
       }
 
@@ -104,7 +105,7 @@ export async function middleware(request: NextRequest) {
 
     } catch (err) {
       console.error("Session decryption failed in middleware:", err);
-      if (process.env.BYPASS_AUTH !== "true") {
+      if (!isBypassActive) {
         return NextResponse.json({ error: 'Unauthorized: Invalid session' }, { status: 401 });
       }
       // Fallback for testing to avoid 401

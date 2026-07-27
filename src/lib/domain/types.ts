@@ -1,6 +1,39 @@
 import { parsePhoneNumberFromString, CountryCode } from "libphonenumber-js";
 import { TimeNormalizer } from "./TimeNormalizer";
 
+// ── Booking Pipeline Trace ──────────────────────────────────────────────────
+export interface BookingTrace {
+  timestamp: string;
+  stages: {
+    userMessage?: { content: string };
+    llmExtraction?: { intent: string; rawFields: Record<string, string | null> };
+    deterministicParse?: { parsedTime: string | null; ambiguousExpression: string | null };
+    normalizedRequest?: ExtractedBookingData;
+    availabilityQuery?: { doctorName: string; slotFound: boolean; availableDayCount: number };
+    businessDecision?: { action: string; reason: string; missingFields: string[] };
+    finalResponse?: { content: string };
+  };
+}
+
+// ── Immutable Booking Context ───────────────────────────────────────────────
+// Tracks which fields have been confirmed by the user and cannot be silently
+// overwritten by the LLM. A field is "confirmed" after it survives one full
+// processIntent cycle without being changed.
+export interface ImmutableBookingContext {
+  confirmedFields: string[];
+}
+
+// ── Booking Pipeline Result ─────────────────────────────────────────────────
+export interface BookingPipelineResult {
+  finalResponse: string;
+  bookingCreated: boolean;
+  bookingModified: boolean;
+  modifiedBookingData: ExtractedBookingData | null;
+  resolvedIntent: string;
+  trace: BookingTrace;
+  immutableContext: ImmutableBookingContext;
+}
+
 export interface ChatMessage {
   role: "user" | "assistant" | "system";
   content: string;
@@ -49,7 +82,11 @@ export function sanitizeAIValue(val: string | null | undefined): string | null {
  * Validates and normalizes any phone number internationally using libphonenumber-js.
  * Handles fallback default country code and checks allowed countries restriction in production.
  */
-export function extractSaudiPhone(text: string | null, defaultCountry: string = "SA"): string | null {
+export function extractSaudiPhone(
+  text: string | null,
+  defaultCountry: string = "SA",
+  allowedCountries?: string[]
+): string | null {
   const sanitized = sanitizeAIValue(text);
   if (!sanitized) return null;
   
@@ -64,6 +101,8 @@ export function extractSaudiPhone(text: string | null, defaultCountry: string = 
     return clean;
   }
   
+  const allowed = allowedCountries || ["SA", "AE", "QA", "KW", "BH", "OM"];
+
   // 1. Try parsing globally first if it starts with + or is formatted globally
   if (clean.startsWith("+") || clean.startsWith("00")) {
     try {
@@ -71,8 +110,7 @@ export function extractSaudiPhone(text: string | null, defaultCountry: string = 
       const globalPhone = parsePhoneNumberFromString(globalClean);
       if (globalPhone && globalPhone.isValid()) {
         // Validate against allowed countries (CRITICAL: prevent arbitrary international numbers)
-        const allowedCountries = ["SA", "AE", "QA", "KW", "BH", "OM"];
-        if (globalPhone.country && allowedCountries.includes(globalPhone.country)) {
+        if (globalPhone.country && allowed.includes(globalPhone.country)) {
           return globalPhone.format("E.164");
         }
         // If not in allowed countries, reject
@@ -85,8 +123,8 @@ export function extractSaudiPhone(text: string | null, defaultCountry: string = 
   try {
     const phoneNumber = parsePhoneNumberFromString(clean, defaultCountry as CountryCode);
     if (phoneNumber && phoneNumber.isValid()) {
-      // Ensure it matches the expected default country
-      if (phoneNumber.country === defaultCountry) {
+      // Ensure it matches the expected default country or is in allowed list
+      if (phoneNumber.country && allowed.includes(phoneNumber.country)) {
         return phoneNumber.format("E.164");
       }
       // If it's international but not in allowed list, reject
@@ -180,11 +218,11 @@ export function validateBookingData(
   let phone: string | null;
   if (isWhatsAppSource) {
     const candidate = rawPhone || fallbackPhone || null;
-    phone = candidate ? (extractSaudiPhone(candidate, defaultCountry) || candidate) : null;
+    phone = candidate ? (extractSaudiPhone(candidate, defaultCountry, allowedList) || candidate) : null;
   } else {
     phone = rawPhone 
-      ? extractSaudiPhone(rawPhone, defaultCountry) 
-      : extractSaudiPhone(fallbackPhone, defaultCountry);
+      ? extractSaudiPhone(rawPhone, defaultCountry, allowedList) 
+      : extractSaudiPhone(fallbackPhone, defaultCountry, allowedList);
   }
   
   const serviceNames = clinic.services.map((s) => s.name);
@@ -227,7 +265,7 @@ export function validateBookingData(
 
   const branch = normalizeToOfficial(data.branchName, branchNames);
   const rawTimeSlot = sanitizeAIValue(data.timeSlot);
-  const timeSlot = TimeNormalizer.normalize(rawTimeSlot, previousTimeSlot);
+  const timeSlot = TimeNormalizer.normalize(rawTimeSlot, previousTimeSlot, clinic.countryCode);
   // 🚧 TIME_TRACE (Phase A) — logging time + server timezone context
   console.log(`[TimeNormalizer] raw: '${rawTimeSlot}' -> normalized: '${timeSlot}'`);
   console.log(`[TIME_TRACE] validateBookingData: serverTZ=${Intl.DateTimeFormat().resolvedOptions().timeZone} offset=${new Date().getTimezoneOffset()} raw="${rawTimeSlot}" previous="${previousTimeSlot}" result="${timeSlot}"`);

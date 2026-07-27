@@ -54,22 +54,19 @@ export async function GET(request: Request) {
       orderBy: { updatedAt: "desc" },
     });
 
-    console.log(`DEBUG API: Found ${conversations.length} conversations for clinic ${clinic.id}`);
-
     const activeBookings = await prisma.booking.findMany({
       where: { clinicId: clinic.id },
       orderBy: { createdAt: "desc" },
     });
 
-    console.log(`DEBUG API: Found ${activeBookings.length} bookings for clinic ${clinic.id}`);
-
     const { extractSaudiPhone } = await import("@/lib/domain/types");
     const defaultCountry = clinic.countryCode || "SA";
+    const allowedList = (clinic.allowedCountries || "SA").split(",").map(c => c.trim().toUpperCase());
 
     const result = conversations.map((conv) => {
-      const convCanonical = extractSaudiPhone(conv.clientPhone, defaultCountry) || conv.clientPhone;
+      const convCanonical = extractSaudiPhone(conv.clientPhone, defaultCountry, allowedList) || conv.clientPhone;
       const booking = activeBookings.find(b => {
-        const bCanonical = extractSaudiPhone(b.clientPhone, defaultCountry) || b.clientPhone;
+        const bCanonical = extractSaudiPhone(b.clientPhone, defaultCountry, allowedList) || b.clientPhone;
         return b.clientPhone === conv.clientPhone || (bCanonical && convCanonical && bCanonical === convCanonical);
       });
 

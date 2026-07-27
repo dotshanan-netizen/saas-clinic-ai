@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 import crypto from "crypto";
 import { jobDispatcher } from "@/lib/infrastructure/queue/BullMQJobDispatcher";
+import { ConnectionManager } from "@/lib/infrastructure/resilience/ConnectionManager";
 
 export const maxDuration = 60; // Allow up to 60 seconds on Vercel to prevent OpenAI timeouts
 
@@ -49,6 +50,8 @@ export async function GET(request: Request) {
 
 // POST: Receiving incoming WhatsApp message notifications from Meta
 export async function POST(request: Request) {
+  let idempotencyCreated = false;
+  let wamidToDelete = "";
   try {
     const rawBody = await request.text();
     const signature = request.headers.get("x-hub-signature-256");
@@ -102,10 +105,12 @@ export async function POST(request: Request) {
       });
 
       // Idempotency check
+      wamidToDelete = wamid;
       try {
         await prisma.processedWebhook.create({
           data: { id: wamid, clinicId: phoneNumberId },
         });
+        idempotencyCreated = true;
       } catch (err: unknown) {
         if ((err as { code?: string }).code === "P2002") {
           console.log(`[Idempotency] Duplicate webhook ignored for wamid: ${wamid}`);
@@ -130,7 +135,7 @@ export async function POST(request: Request) {
             const [iv, authTag, encryptedData] = parts;
             const decryptedToken = decrypt(encryptedData, iv, authTag);
             const politeResponse = "عذراً، لا أستطيع معالجة الصور، الصوتيات أو الملفات حالياً. يرجى كتابة طلبك كرسالة نصية وسأقوم بمساعدتك فوراً! 🌸";
-            await fetch(
+            await ConnectionManager.withFetchResilience(
               `https://graph.facebook.com/v18.0/${clinicForMedia.whatsappPhoneId}/messages`,
               {
                 method: "POST",
@@ -145,7 +150,8 @@ export async function POST(request: Request) {
                   type: "text",
                   text: { preview_url: false, body: politeResponse },
                 }),
-              }
+              },
+              "Meta WhatsApp API"
             );
           }
         }
@@ -231,7 +237,7 @@ export async function POST(request: Request) {
             const [iv, authTag, encryptedData] = parts;
             const decryptedToken = decrypt(encryptedData, iv, authTag);
 
-            const metaResponse = await fetch(
+            const metaResponse = await ConnectionManager.withFetchResilience(
               `https://graph.facebook.com/v19.0/${phoneNumberId}/messages`,
               {
                 method: "POST",
@@ -249,7 +255,8 @@ export async function POST(request: Request) {
                     body: finalResponse.response,
                   },
                 }),
-              }
+              },
+              "Meta WhatsApp API"
             );
 
             if (!metaResponse.ok) {
@@ -266,6 +273,9 @@ export async function POST(request: Request) {
 
     return new Response("Success: Event ignored (no messages found)", { status: 200 });
   } catch (error) {
+    if (idempotencyCreated && wamidToDelete) {
+      await prisma.processedWebhook.delete({ where: { id: wamidToDelete } }).catch(() => {});
+    }
     console.error("Error handling WhatsApp Webhook POST:", error);
     return new Response("Internal Server Error", { status: 500 });
   }

@@ -21,6 +21,36 @@ function formatArabicTime(hour: number, minute: number): string {
 }
 
 export class BookingService {
+  private static getClinicLocalDate(countryCode: string): Date {
+    const tzMap: Record<string, string> = {
+      SA: "Asia/Riyadh",
+      AE: "Asia/Dubai",
+      QA: "Asia/Qatar",
+      KW: "Asia/Kuwait",
+      BH: "Asia/Bahrain",
+      OM: "Asia/Muscat"
+    };
+    const timeZone = tzMap[countryCode] || "Asia/Riyadh";
+    const formatter = new Intl.DateTimeFormat("en-US", {
+      timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false
+    });
+    const parts = formatter.formatToParts(new Date());
+    const year = parseInt(parts.find(p => p.type === 'year')?.value || "2026", 10);
+    const month = parseInt(parts.find(p => p.type === 'month')?.value || "07", 10) - 1;
+    const day = parseInt(parts.find(p => p.type === 'day')?.value || "27", 10);
+    const hour = parseInt(parts.find(p => p.type === 'hour')?.value || "12", 10);
+    const minute = parseInt(parts.find(p => p.type === 'minute')?.value || "00", 10);
+    const second = parseInt(parts.find(p => p.type === 'second')?.value || "00", 10);
+    return new Date(year, month, day, hour, minute, second);
+  }
+
   static async getAvailableSlots(clinicId: string, doctorName: string, serviceName?: string): Promise<Record<string, string[]>> {
     let targetDoctors: any[] = [];
     if (doctorName === "ANY" || doctorName === "أي طبيب") {
@@ -73,7 +103,12 @@ export class BookingService {
     });
 
     const doctorsSlots: Record<string, string[]>[] = [];
-    const today = startOfDay(new Date());
+    const clinic = await prisma.clinic.findUnique({
+      where: { id: clinicId },
+      select: { countryCode: true }
+    });
+    const countryCode = clinic?.countryCode || "SA";
+    const today = startOfDay(this.getClinicLocalDate(countryCode));
     // 🚧 TIME_TRACE (Phase A)
     console.log(`[TIME_TRACE] BookingService.getAvailableSlots: today=${today.toISOString()} serverTZ=${Intl.DateTimeFormat().resolvedOptions().timeZone} offset=${new Date().getTimezoneOffset()} now=${new Date().toISOString()}`);
 

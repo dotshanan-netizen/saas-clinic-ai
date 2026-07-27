@@ -38,6 +38,36 @@ export class TimeNormalizer {
   private static readonly amWords = ["ص", "صباح", "الصباح", "صبح", "الصبح", "فجر", "الفجر", "صباحاً", "صباحا", "ضحى", "الضحى"];
   private static readonly pmWords = ["م", "مساء", "المساء", "ظهر", "الظهر", "عصر", "العصر", "مغرب", "المغرب", "عشاء", "العشاء", "عشا", "العشا", "ليل", "الليل", "بالليل", "مساءً", "مساءا", "عصراً", "الظهيرة"];
 
+  private static getClinicLocalDate(countryCode: string): Date {
+    const tzMap: Record<string, string> = {
+      SA: "Asia/Riyadh",
+      AE: "Asia/Dubai",
+      QA: "Asia/Qatar",
+      KW: "Asia/Kuwait",
+      BH: "Asia/Bahrain",
+      OM: "Asia/Muscat"
+    };
+    const timeZone = tzMap[countryCode] || "Asia/Riyadh";
+    const formatter = new Intl.DateTimeFormat("en-US", {
+      timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false
+    });
+    const parts = formatter.formatToParts(new Date());
+    const year = parseInt(parts.find(p => p.type === 'year')?.value || "2026", 10);
+    const month = parseInt(parts.find(p => p.type === 'month')?.value || "07", 10) - 1;
+    const day = parseInt(parts.find(p => p.type === 'day')?.value || "27", 10);
+    const hour = parseInt(parts.find(p => p.type === 'hour')?.value || "12", 10);
+    const minute = parseInt(parts.find(p => p.type === 'minute')?.value || "00", 10);
+    const second = parseInt(parts.find(p => p.type === 'second')?.value || "00", 10);
+    return new Date(year, month, day, hour, minute, second);
+  }
+
   static isNormalized(text: string): boolean {
     const canonicalFormatRegex = /^(الأحد|الإثنين|الأثنين|الثلاثاء|الأربعاء|الخميس|الجمعة|السبت)\s*\(\s*\d{1,2}\s+[^\)]+\)\s+[0-1]?[0-9]:[0-5][0-9]\s+[صم]$/;
     return canonicalFormatRegex.test(text);
@@ -48,7 +78,7 @@ export class TimeNormalizer {
    * Example: "الثلاثاء الساعة 11 الصباح" -> "الأحد (26 يوليو) 11:00 ص" (if next Tuesday is July 28)
    * Example: "12 أغسطس الساعة 10 ص" -> "الأربعاء (12 أغسطس) 10:00 ص"
    */
-  static normalize(raw: string | null, previousTimeSlot?: string | null): string | null {
+  static normalize(raw: string | null, previousTimeSlot?: string | null, countryCode: string = "SA"): string | null {
     // 🚧 TIME_TRACE (Phase A — يزال بعد انتهاء التحقيق)
     const _traceInput = raw;
     if (!raw) return null;
@@ -62,6 +92,7 @@ export class TimeNormalizer {
       return text;
     }
 
+    const todayLocal = this.getClinicLocalDate(countryCode);
     let resolvedDatePart = "";
     const days = ["الأحد", "الإثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"];
 
@@ -82,7 +113,7 @@ export class TimeNormalizer {
         const monthIndex = this.monthsMap[monthName];
 
         if (monthIndex !== undefined) {
-          const year = new Date().getFullYear();
+          const year = todayLocal.getFullYear();
           const targetDate = new Date(year, monthIndex, dayNum);
           const dayName = days[targetDate.getDay()];
           resolvedDatePart = `${dayName} (${dayNum} ${monthName}) `;
@@ -98,7 +129,7 @@ export class TimeNormalizer {
         }
 
         if (offset !== null) {
-          const targetDate = new Date();
+          const targetDate = new Date(todayLocal.getTime());
           targetDate.setDate(targetDate.getDate() + offset);
           const dayName = days[targetDate.getDay()];
           const dayNum = targetDate.getDate();
@@ -115,12 +146,11 @@ export class TimeNormalizer {
           }
 
           if (targetDayIndex !== null) {
-            const today = new Date();
-            const todayIndex = today.getDay();
+            const todayIndex = todayLocal.getDay();
             let diff = targetDayIndex - todayIndex;
             if (diff < 0) diff += 7; // next week
-            const targetDate = new Date();
-            targetDate.setDate(today.getDate() + diff);
+            const targetDate = new Date(todayLocal.getTime());
+            targetDate.setDate(todayLocal.getDate() + diff);
             const dayName = days[targetDate.getDay()];
             const dayNum = targetDate.getDate();
             const monthName = this.monthsNamesArabic[targetDate.getMonth()];

@@ -1,1 +1,0 @@
-const { PrismaClient } = require('./src/generated/prisma'); const prisma = new PrismaClient(); prisma.clinic.findMany().then(cs => console.log(cs.map(c => c.slug + ' -> Phone: ' + c.whatsappPhoneId + ' | Token: ' + (c.whatsappToken ? 'YES' : 'NO')))).catch(console.error).finally(() => prisma.$disconnect());

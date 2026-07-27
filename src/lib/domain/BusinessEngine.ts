@@ -1,6 +1,7 @@
 import { Prisma } from "@/generated/prisma";
 import { prisma } from "../db";
-import { ClinicWithCatalog, ExtractedBookingData, validateBookingData, extractSaudiPhone } from "./types";
+import { ClinicWithCatalog, ExtractedBookingData, validateBookingData, extractSaudiPhone, BookingTrace, ImmutableBookingContext } from "./types";
+import { TimeExtractor } from "./TimeExtractor";
 import { Logger } from "../infrastructure/logging/Logger";
 
 function normalizeToOfficial(extracted: string | null, officialList: string[]): string | null {
@@ -25,6 +26,22 @@ function normalizeToOfficial(extracted: string | null, officialList: string[]): 
 }
 
 export class BusinessEngine {
+  /**
+   * Determines whether the user message explicitly mentions a field change.
+   * Used by the Immutable Booking Context to reject silent overwrites.
+   */
+  private static userExplicitlyMentions(fieldName: string, userMessage: string, clinic: ClinicWithCatalog): boolean {
+    const fieldKeywords: Record<string, string[]> = {
+      serviceName: ["خدمة", "خدمة", ...clinic.services.map(s => s.name)],
+      doctorName: ["طبيب", "دكتور", "دكتورة", "أخصائي", "أخصائية", ...clinic.doctors.map(d => d.name)],
+      branchName: ["فرع", ...clinic.branches.map(b => b.name)],
+      timeSlot: ["الساعة", "الساعه", "السعة", "موعد", "وقت", "بكرة", "بكرا", "اليوم", "الصبح", "المساء", "الظهر", "العصر", "المغرب", "العشاء", "الليل"],
+    };
+    const keywords = fieldKeywords[fieldName];
+    if (!keywords) return true; // If unknown field, allow change
+    return keywords.some(kw => userMessage.includes(kw));
+  }
+
   static async processIntent(
     clinic: ClinicWithCatalog,
     clientPhone: string,
@@ -44,7 +61,29 @@ export class BusinessEngine {
     bookingModified: boolean;
     modifiedBookingData: ExtractedBookingData | null;
     resolvedIntent: string;
+    trace: BookingTrace;
+    immutableContext: ImmutableBookingContext;
   }> {
+    // ── STRUCTURED TRACE ───────────────────────────────────────────────────────
+    const trace: BookingTrace = {
+      timestamp: new Date().toISOString(),
+      stages: {
+        userMessage: { content: userMessage },
+        llmExtraction: {
+          intent: aiResult.intent,
+          rawFields: {
+            clientName: aiResult.bookingData?.clientName || null,
+            clientPhone: aiResult.bookingData?.clientPhone || null,
+            serviceName: aiResult.bookingData?.serviceName || null,
+            doctorName: aiResult.bookingData?.doctorName || null,
+            branchName: aiResult.bookingData?.branchName || null,
+            timeSlot: aiResult.bookingData?.timeSlot || null,
+          },
+        },
+      },
+    };
+    // ───────────────────────────────────────────────────────────────────────────
+
     let finalResponse = aiResult.response;
     let bookingCreated = false;
     let bookingModified = false;
@@ -63,6 +102,18 @@ export class BusinessEngine {
       };
     }
 
+    // ── STEP 1: Deterministic Time Extraction ──────────────────────────────────
+    // Run TimeExtractor BEFORE any LLM-based logic. Explicit numeric times
+    // always override LLM extraction.
+    const timeExtraction = TimeExtractor.extract(userMessage);
+    trace.stages.deterministicParse = {
+      parsedTime: timeExtraction.normalizedTime,
+      ambiguousExpression: timeExtraction.isAmbiguous ? timeExtraction.extractedTime : null,
+    };
+
+    const isNumericTimeFound = timeExtraction.normalizedTime !== null && !timeExtraction.isAmbiguous;
+    // ───────────────────────────────────────────────────────────────────────────
+
     // Robust Regex-based Fallback Extraction when AI returns empty/null fields but userMessage contains booking info
     const isUnset = (val: string | null | undefined) => !val || val === "null" || val === "غير محدد" || val === "";
 
@@ -71,9 +122,20 @@ export class BusinessEngine {
     let extractedService = !isUnset(aiResult.bookingData?.serviceName) ? aiResult.bookingData!.serviceName : currentState.serviceName;
     let extractedDoctor = !isUnset(aiResult.bookingData?.doctorName) ? aiResult.bookingData!.doctorName : currentState.doctorName;
     let extractedBranch = !isUnset(aiResult.bookingData?.branchName) ? aiResult.bookingData!.branchName : currentState.branchName;
-    let extractedTime = !isUnset(aiResult.bookingData?.timeSlot) ? aiResult.bookingData!.timeSlot : currentState.timeSlot;
+
+    // ── STEP 2: Deterministic Time Priority ────────────────────────────────────
+    // If TimeExtractor found a numeric time, use it OVER the LLM's extraction.
+    // The LLM may only interpret ambiguous expressions (صباح, مساء, بكره الصبح).
+    let extractedTime: string | null;
+    if (isNumericTimeFound) {
+      extractedTime = timeExtraction.normalizedTime;
+      console.log(`[ARCHITECTURAL] Deterministic time override: LLM="${aiResult.bookingData?.timeSlot}" → Deterministic="${timeExtraction.normalizedTime}"`);
+    } else {
+      extractedTime = !isUnset(aiResult.bookingData?.timeSlot) ? aiResult.bookingData!.timeSlot : currentState.timeSlot;
+    }
     // 🚧 TIME_TRACE (Phase A)
-    console.log(`[TIME_TRACE] BusinessEngine.extract: aiTime="${aiResult.bookingData?.timeSlot}" currentStateTime="${currentState.timeSlot}" extractedTime="${extractedTime}"`);
+    console.log(`[TIME_TRACE] BusinessEngine.extract: aiTime="${aiResult.bookingData?.timeSlot}" deterministicTime="${timeExtraction.normalizedTime}" extractedTime="${extractedTime}"`);
+    // ───────────────────────────────────────────────────────────────────────────
 
     // ── ACTIVE BOOKING SESSION DETECTION ───────────────────────────────────────
     // If the AI returned NO booking intent AND NO booking-specific extracted data,
@@ -87,7 +149,7 @@ export class BusinessEngine {
       !isUnset(aiResult.bookingData.serviceName) ||
       !isUnset(aiResult.bookingData.doctorName) ||
       !isUnset(aiResult.bookingData.branchName) ||
-      !isUnset(aiResult.bookingData.timeSlot)
+      (!isNumericTimeFound && !isUnset(aiResult.bookingData.timeSlot)) // Only consider LLM time if no deterministic time
     );
     if (!aiBookingIntent && !aiExtractedBookingField) {
       extractedService = null;
@@ -127,11 +189,15 @@ export class BusinessEngine {
     }
 
     // Prevent Double Normalization: Only parse time if extractedTime is not set yet.
+    // (TimeNormalizer still handles ambiguous expressions via LLM fallback)
     if (!extractedTime || isUnset(extractedTime)) {
-      const { TimeNormalizer } = await import("./TimeNormalizer");
-      const normalizedFromMessage = TimeNormalizer.normalize(userMessage);
-      if (normalizedFromMessage) {
-        extractedTime = normalizedFromMessage;
+      // Only fall back to TimeNormalizer if no deterministic time was found
+      if (!isNumericTimeFound) {
+        const { TimeNormalizer } = await import("./TimeNormalizer");
+        const normalizedFromMessage = TimeNormalizer.normalize(userMessage, null, clinic.countryCode || "SA");
+        if (normalizedFromMessage) {
+          extractedTime = normalizedFromMessage;
+        }
       }
     }
 
@@ -144,10 +210,13 @@ export class BusinessEngine {
       timeSlot: extractedTime,
     };
 
+    // Record normalized request in trace
+    trace.stages.normalizedRequest = sanitizedData;
+
     // ── INSTRUMENTATION: Stage 1 — Post-Extraction ─────────────────────────
     console.log(JSON.stringify({
       stage: "ENTITY_EXTRACTION",
-      source: "AI+Regex",
+      source: "AI+Regex+Deterministic",
       extracted: {
         name: extractedName,
         phone: extractedPhone,
@@ -161,6 +230,7 @@ export class BusinessEngine {
         branch: aiResult.bookingData?.branchName,
         timeSlot: aiResult.bookingData?.timeSlot,
       },
+      deterministicOverride: isNumericTimeFound ? timeExtraction.normalizedTime : null,
       currentState: {
         branch: currentState.branchName,
         timeSlot: currentState.timeSlot,
@@ -337,9 +407,21 @@ export class BusinessEngine {
           if (slotIsAvailable) break;
         }
         
+        // Record availability check in trace
+        trace.stages.availabilityQuery = {
+          doctorName: validation.normalizedDoctor || "unknown",
+          slotFound: slotIsAvailable,
+          availableDayCount: availableSlotKeys.length,
+        };
+
         if (!slotIsAvailable) {
           // DISTINGUISH: "no slots generated at all" vs "slot not found in generated list"
           const isEmptySlots = totalSlotCount === 0;
+          trace.stages.businessDecision = {
+            action: "REJECT_TIME",
+            reason: isEmptySlots ? "NO_SLOTS_AVAILABLE" : "SLOT_NOT_IN_GENERATED_LIST",
+            missingFields: ["الوقت المناسب"],
+          };
           console.log(JSON.stringify({
             event: "DOUBLE_BOOKING_GUARD_NO_SLOT",
             failureMode: isEmptySlots ? "NO_SLOTS_AVAILABLE" : "SLOT_NOT_IN_GENERATED_LIST",
@@ -361,7 +443,9 @@ export class BusinessEngine {
           }
           bookingCreated = false;
           bookingModified = false;
-          return { finalResponse, bookingCreated, bookingModified, modifiedBookingData, resolvedIntent };
+          trace.stages.finalResponse = { content: finalResponse };
+          const fallbackImmutableContext: ImmutableBookingContext = { confirmedFields: [] };
+          return { finalResponse, bookingCreated, bookingModified, modifiedBookingData, resolvedIntent, trace, immutableContext: fallbackImmutableContext };
         }
         // -- DOUBLE BOOKING GUARD END --
 
@@ -384,7 +468,8 @@ export class BusinessEngine {
               service: { clinicId: clinic.id, name: validation.normalizedService, status: "ACTIVE" },
               doctor: { status: "ACTIVE" }
             },
-            include: { doctor: true }
+            include: { doctor: true },
+            orderBy: { doctorId: "asc" }
           });
           const candidateDoctors = doctorServices.map((ds) => ds.doctor);
           for (const doc of candidateDoctors) {
@@ -430,36 +515,58 @@ export class BusinessEngine {
 
           if (!existingBooking) {
             try {
-              await prisma.$transaction(async (tx) => {
-                const conflict = await tx.booking.findFirst({
-                  where: {
-                    clinicId: clinic.id,
-                    doctorName: finalDoctorName,
-                    timeSlot: validation.cleanTimeSlot!,
-                    status: { in: ["PENDING", "CONFIRMED"] }
-                  }
-                });
-                
-                if (conflict) {
-                  throw new Error("DOUBLE_BOOKING");
-                }
+              // Production Hardening: Retry P2034 (serialization failure) up to 2x.
+              // Serializable isolation throws P2034 when concurrent transactions
+              // conflict on the same slot. This is transient — retrying allows
+              // the successful transaction's commit to be visible, so the retry
+              // either succeeds or correctly detects DOUBLE_BOOKING.
+              // Without retry, users see false "time not available" errors under
+              // concurrent load (race condition test: 4/5 concurrent attempts fail).
+              const MAX_P2034_RETRIES = 2;
+              let txSuccess = false;
+              for (let attempt = 0; attempt <= MAX_P2034_RETRIES; attempt++) {
+                try {
+                  await prisma.$transaction(async (tx) => {
+                    const conflict = await tx.booking.findFirst({
+                      where: {
+                        clinicId: clinic.id,
+                        doctorName: finalDoctorName,
+                        timeSlot: validation.cleanTimeSlot!,
+                        status: { in: ["PENDING", "CONFIRMED"] }
+                      }
+                    });
 
-                await tx.booking.create({
-                  data: {
-                    clientName: validation.cleanName!,
-                    clientPhone: finalPhone,
-                    serviceName: validation.normalizedService!,
-                    doctorName: finalDoctorName,
-                    branchName: validation.normalizedBranch!,
-                    timeSlot: validation.cleanTimeSlot!,
-                    source: source,
-                    clinicId: clinic.id,
-                    status: "PENDING",
-                  },
-                });
-              }, {
-                isolationLevel: Prisma.TransactionIsolationLevel.Serializable
-              });
+                    if (conflict) {
+                      throw new Error("DOUBLE_BOOKING");
+                    }
+
+                    await tx.booking.create({
+                      data: {
+                        clientName: validation.cleanName!,
+                        clientPhone: finalPhone,
+                        serviceName: validation.normalizedService!,
+                        doctorName: finalDoctorName,
+                        branchName: validation.normalizedBranch!,
+                        timeSlot: validation.cleanTimeSlot!,
+                        source: source,
+                        clinicId: clinic.id,
+                        status: "PENDING",
+                      },
+                    });
+                  }, {
+                    isolationLevel: Prisma.TransactionIsolationLevel.Serializable
+                  });
+                  txSuccess = true;
+                  break;
+                } catch (txErr: any) {
+                  // Retry only transient P2034; DOUBLE_BOOKING and other errors propagate immediately
+                  if (txErr.code === "P2034" && attempt < MAX_P2034_RETRIES) {
+                    console.log(`[P2034-Retry] Serialization conflict (attempt ${attempt + 1}/${MAX_P2034_RETRIES}), retrying...`);
+                    continue;
+                  }
+                  throw txErr; // Non-retryable → let outer catch handle DOUBLE_BOOKING or rethrow
+                }
+              }
               
               bookingCreated = true;
 
@@ -482,13 +589,20 @@ export class BusinessEngine {
               finalResponse = `وصلني طلب الحجز بنجاح 🌷\n\n✅ الاسم: ${validation.cleanName}\n✅ الجوال: ${finalPhone}\n✅ الخدمة: ${validation.normalizedService}\n✅ الطبيب: ${finalDoctorName}\n✅ الفرع: ${validation.normalizedBranch}\n✅ الوقت المفضل: ${validation.cleanTimeSlot}\n\nتم إرسال طلبك لموظف الاستقبال، وسيتواصل معك لتأكيد الموعد النهائي حسب التوفر. 🌸${contactNote}`;
             } catch (err: any) {
               if (err.message === "DOUBLE_BOOKING" || err.code === "P2034") {
+                trace.stages.businessDecision = {
+                  action: "REJECT_DOUBLE_BOOKING",
+                  reason: "DB_CONCURRENCY_CONFLICT",
+                  missingFields: ["الوقت المناسب"],
+                };
                 finalResponse = `عذراً، الوقت الذي اخترته (${validation.cleanTimeSlot}) تم حجزه للتو من قبل مراجع آخر. أرجو اختيار وقت آخر من الأوقات المتاحة. 🌷`;
                 if (modifiedBookingData) {
                   modifiedBookingData.timeSlot = null;
                 }
                 bookingCreated = false;
                 bookingModified = false;
-                return { finalResponse, bookingCreated, bookingModified, modifiedBookingData, resolvedIntent };
+                trace.stages.finalResponse = { content: finalResponse };
+                const fallbackImmutableContext: ImmutableBookingContext = { confirmedFields: [] };
+                return { finalResponse, bookingCreated, bookingModified, modifiedBookingData, resolvedIntent, trace, immutableContext: fallbackImmutableContext };
               }
               throw err;
             }
@@ -498,6 +612,21 @@ export class BusinessEngine {
         }
       } else {
         // HARD GATE BLOCKED BOOKING
+        // P0: Clear stale modifiedBookingData.timeSlot so it does NOT persist
+        // to bookingDraft and leak into the next turn (G1→G2→G3 feedback loop).
+        // IMPORTANT: Only clear if the time was NOT freshly extracted this turn.
+        // When the deterministic parser or AI provides a new time, preserve it so
+        // the booking state reflects the user's explicit input. Without this guard,
+        // regression test PR-001 (time-mutation) fails because a freshly parsed
+        // "23:00→11:00 م" gets incorrectly nulled when only branch is missing.
+        // Ownership: BusinessEngine owns modifiedBookingData content and MAY null
+        // any field as a business decision (per RUNTIME_OBSERVABILITY_SPEC.md §2.2).
+        if (modifiedBookingData) {
+          const wasTimeStale = !isNumericTimeFound && isUnset(aiResult.bookingData?.timeSlot);
+          if (wasTimeStale) {
+            modifiedBookingData.timeSlot = null;
+          }
+        }
         const isHallucinatedSuccess = finalResponse.match(/تم|نجاح|ارسال|رفع|وصلني|حجز/i);
 
         if (sanitizedData.clientPhone && !validation.normalizedPhone && !validation.phoneRestricted) {
@@ -537,13 +666,14 @@ export class BusinessEngine {
         }
 
         // Validation result is used for response generation only.
-        // ARCHITECTURAL RULE: Validation does NOT modify Conversation Memory.
-        // modifiedBookingData preserves whatever the AI extracted, even if
-        // some fields fail canonical matching. This prevents state loss across
-        // multi-turn booking flows when the user sends partial responses.
-        // The missing fields are communicated to the user via finalResponse above.
-        // Memory is only updated when the user explicitly provides new values
-        // or when a booking is successfully created/confirmed.
+        // ARCHITECTURAL RULE (per RUNTIME_OBSERVABILITY_SPEC.md §2.2, §3.3):
+        // BusinessEngine owns modifiedBookingData content and MAY null any field
+        // as a business decision. Here, timeSlot is nulled (P0) to prevent the
+        // stale value from persisting to bookingDraft and leaking into the next
+        // turn via the feedback loop. Other fields (name, phone, service, doctor,
+        // branch) are preserved so the user does not have to re-enter them.
+        // ConversationEngine owns the persistence boundary — it decides whether
+        // to save modifiedBookingData as bookingDraft.
       }
     } else if (resolvedIntent === "CancelAppointment") {
       const defaultCountry = clinic.countryCode || "SA";
@@ -639,6 +769,43 @@ export class BusinessEngine {
       finalResponse = finalResponse.replace(/\s+/g, " ").trim();
     }
 
-    return { finalResponse, bookingCreated, bookingModified, modifiedBookingData, resolvedIntent };
+    // ── BUILD IMMUTABLE CONTEXT ───────────────────────────────────────────────
+    // Fields that survived unchanged from currentState to sanitizedData are
+    // considered "confirmed" and should not be silently overwritten.
+    const confirmedFields: string[] = [];
+    const stateFieldMap: Record<string, string | null | undefined> = {
+      clientName: currentState?.clientName,
+      clientPhone: currentState?.clientPhone,
+      serviceName: currentState?.serviceName,
+      doctorName: currentState?.doctorName,
+      branchName: currentState?.branchName,
+      timeSlot: currentState?.timeSlot,
+    };
+    const extractedFieldMap: Record<string, string | null | undefined> = {
+      clientName: modifiedBookingData?.clientName,
+      clientPhone: modifiedBookingData?.clientPhone,
+      serviceName: modifiedBookingData?.serviceName,
+      doctorName: modifiedBookingData?.doctorName,
+      branchName: modifiedBookingData?.branchName,
+      timeSlot: modifiedBookingData?.timeSlot,
+    };
+    for (const [key, stateVal] of Object.entries(stateFieldMap)) {
+      if (stateVal !== null && stateVal !== undefined && stateVal !== "null") {
+        if (extractedFieldMap[key] === stateVal) {
+          confirmedFields.push(key);
+        }
+      }
+    }
+    const immutableContext: ImmutableBookingContext = { confirmedFields };
+
+    // ── FINALIZE TRACE ────────────────────────────────────────────────────────
+    trace.stages.businessDecision = trace.stages.businessDecision || {
+      action: bookingCreated ? "CREATE_BOOKING" : bookingModified ? "MODIFY_BOOKING" : "CONTINUE_CONVERSATION",
+      reason: resolvedIntent,
+      missingFields: [],
+    };
+    trace.stages.finalResponse = { content: finalResponse };
+
+    return { finalResponse, bookingCreated, bookingModified, modifiedBookingData, resolvedIntent, trace, immutableContext };
   }
 }

@@ -182,7 +182,6 @@ export default function Dashboard() {
   };
 
   useEffect(() => {
-    console.log("🚀 DASHBOARD MOUNTED", Math.random());
     let active = true;
 
     const doFetch = (silent = false) => {
@@ -200,7 +199,6 @@ export default function Dashboard() {
     const intervalId = setInterval(() => doFetch(true), 5000);
 
     return () => {
-      console.log("🛑 DASHBOARD UNMOUNTED");
       active = false;
       clearInterval(intervalId);
     };

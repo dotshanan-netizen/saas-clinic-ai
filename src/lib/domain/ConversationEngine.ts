@@ -5,6 +5,8 @@ import { AIProvider } from "../infrastructure/ai/AIProvider";
 import { BusinessEngine } from "./BusinessEngine";
 import { JourneyResolver } from "./journey/JourneyResolver";
 import { Logger } from "../infrastructure/logging/Logger";
+import { ConnectionManager } from "../infrastructure/resilience/ConnectionManager";
+import crypto from "crypto";
 
 const MAX_CONTEXT_MESSAGES = parseInt(process.env.MAX_CONTEXT_MESSAGES || "12", 10);
 
@@ -26,20 +28,53 @@ export class ConversationEngine {
     stage?: string;
     policy?: string;
   }> {
-    
-    // 1. Fetch or create the conversation context
-    const conversation = await prisma.conversation.findUnique({
-      where: {
-        clinicId_clientPhone: {
-          clinicId: clinic.id,
-          clientPhone: clientPhone,
-        },
-      },
-    });
+    const redis = ConnectionManager.getRedisConnection("conversation-lock");
+    const lockKey = `lock:conversation:${clinic.id}:${clientPhone}`;
+    let lockValue = "";
+    let acquired = false;
 
-    let history: ChatMessage[] = [];
-    if (conversation && conversation.messages) {
-      history = conversation.messages as unknown as ChatMessage[];
+    try {
+      lockValue = crypto.randomUUID();
+      const lockTimeoutMs = 15000;
+      for (let i = 0; i < 5; i++) {
+        const result = await redis.set(lockKey, lockValue, "PX", lockTimeoutMs, "NX");
+        if (result === "OK") {
+          acquired = true;
+          break;
+        }
+        await new Promise(resolve => setTimeout(resolve, 100 + Math.random() * 200));
+      }
+    } catch (err: any) {
+      console.warn(`[RedisLock] Failed to acquire lock: ${err.message}. Proceeding without lock.`);
+    }
+
+    try {
+      // Production Hardening: Guard against empty/invalid messages.
+      // Prevents unnecessary AI calls (wasted tokens + latency) when message
+      // is missing or whitespace-only.
+      if (!message || message.trim().length === 0) {
+        Logger.warn(`[ConversationEngine] Empty message from ${clientPhone}, skipping AI call.`);
+        return {
+          response: "",
+          intent: "EmptyMessage",
+          stage: "IDLE",
+          policy: "General Policy"
+        };
+      }
+
+      // 1. Fetch or create the conversation context
+      const conversation = await prisma.conversation.findUnique({
+        where: {
+          clinicId_clientPhone: {
+            clinicId: clinic.id,
+            clientPhone: clientPhone,
+          },
+        },
+      });
+
+      let history: ChatMessage[] = [];
+      if (conversation && conversation.messages) {
+        history = conversation.messages as unknown as ChatMessage[];
       
       // Phase 1: Check lastInteraction timeout (15 mins)
       const lastInteraction = conversation.updatedAt.getTime();
@@ -160,11 +195,24 @@ export class ConversationEngine {
       timeSlot: isModificationOrCancel ? (activeBooking?.timeSlot || null) : null
     };
 
-    // Load active transient state directly from bookingDraft JSON Column
-    if (conversation && conversation.bookingDraft) {
+    // Load active transient state directly from bookingDraft JSON Column only if not expired (15 minutes)
+    const DRAFT_EXPIRATION_MS = 15 * 60 * 1000;
+    const isDraftExpired = conversation?.updatedAt
+      ? (Date.now() - new Date(conversation.updatedAt).getTime() > DRAFT_EXPIRATION_MS)
+      : true;
+
+    // P2: Selective draft restoration — restore identity and service-selection
+    // fields (name, phone, service, doctor, branch) but NOT timeSlot.
+    // timeSlot must be freshly extracted by the AI each turn from the user's
+    // message or conversation history. Blindly restoring timeSlot from draft
+    // allows stale values to prime the AI prompt (AIProvider.ts:112) and
+    // feed into the merge pipeline, enabling the G1→G2→G3 feedback loop.
+    // Per TIME_PIPELINE_HARDENING_PLAN.md §P2, this closes R4.
+    if (conversation && conversation.bookingDraft && !isDraftExpired) {
+      const { timeSlot: _staleTimeSlot, ...safeDraftFields } = conversation.bookingDraft as any;
       currentState = {
         ...currentState,
-        ...(conversation.bookingDraft as any)
+        ...safeDraftFields,
       };
     }
 
@@ -234,7 +282,6 @@ export class ConversationEngine {
     const llmStart = Date.now();
     try {
       aiResult = await AIProvider.classifyIntentAndExtractData(clinic, historyToModel, source, currentState, availableSlotsText, businessProfile);
-      console.log("[DEBUG AIResult]:", JSON.stringify(aiResult, null, 2));
       llmLatency = Date.now() - llmStart;
 
       // Log LLM Latency & Token Metrics
@@ -253,21 +300,30 @@ export class ConversationEngine {
       // Retain previously gathered data if AI omits it.
       // ARCHITECTURAL RULE: Intent-Aware Merge.
       // - Booking intents (BookAppointment, ModifyBooking): Full merge from
-      //   currentState to handle AI omissions during multi-turn booking flows.
+      //   currentState to handle AI omissions during multi-turn booking flows,
+      //   WITH a Time Merge Guard (P1) on timeSlot: only fall through to
+      //   currentState.timeSlot when the user's message contains time keywords.
       // - Non-booking intents (Inquiry, Complaint, etc.): Identity-only merge.
       //   Booking fields are explicitly nulled to prevent stale state contamination.
       //   The BusinessEngine Active Session Gate then correctly detects that
       //   no booking activity is happening and resets the stale fields.
+      // - P1 Time Merge Guard: Prevents stale bookingDraft timeSlot values from
+      //   leaking through the Intent-Aware Merge when the user is talking about
+      //   something unrelated (TIME_PIPELINE_HARDENING_PLAN.md §P1).
       const isBookingIntent = aiResult.intent === "BookAppointment" || aiResult.intent === "ModifyBooking";
       if (aiResult.bookingData) {
         if (isBookingIntent) {
+          // P1 Guard: only fall through to currentState.timeSlot if user mentions time
+          const hasTimeKeyword = !!message.match(
+            /الساعة|الساعه|السعة|موعد|وقت|بكرة|بكرا|اليوم|الصبح|المساء|الظهر|العصر|المغرب|العشاء|الليل/i
+          );
           aiResult.bookingData = {
             clientName: aiResult.bookingData.clientName || currentState.clientName,
             clientPhone: aiResult.bookingData.clientPhone || currentState.clientPhone,
             serviceName: aiResult.bookingData.serviceName || currentState.serviceName,
             doctorName: aiResult.bookingData.doctorName || currentState.doctorName,
             branchName: aiResult.bookingData.branchName || currentState.branchName,
-            timeSlot: aiResult.bookingData.timeSlot || currentState.timeSlot,
+            timeSlot: aiResult.bookingData.timeSlot || (hasTimeKeyword ? currentState.timeSlot : null),
           };
         } else {
           // Identity-only: preserve customer identity, null out transient booking fields
@@ -317,6 +373,8 @@ export class ConversationEngine {
       bookingModified = result.bookingModified || false;
       modifiedBookingData = result.modifiedBookingData || aiResult.bookingData;
       aiResult.intent = result.resolvedIntent as import("@/lib/infrastructure/ai/AIProvider").AIIntent;
+
+      // Structured trace available in result.trace and result.immutableContext
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (error: any) {
       llmLatency = Date.now() - llmStart;
@@ -432,14 +490,26 @@ export class ConversationEngine {
       policy: resolvedPolicy,
     }));
 
-    return {
-      response: finalResponse,
-      humanTakeover: aiResult.humanTakeover,
-      bookingData: (bookingCreated || bookingModified) ? null : modifiedBookingData,
-      bookingCreated: bookingCreated || bookingModified,
-      intent: resolvedIntent,
-      stage: resolvedStage,
-      policy: resolvedPolicy
-    };
+      return {
+        response: finalResponse,
+        humanTakeover: aiResult.humanTakeover,
+        bookingData: (bookingCreated || bookingModified) ? null : modifiedBookingData,
+        bookingCreated: bookingCreated || bookingModified,
+        intent: resolvedIntent,
+        stage: resolvedStage,
+        policy: resolvedPolicy
+      };
+    } finally {
+      if (acquired) {
+        try {
+          const currentVal = await redis.get(lockKey);
+          if (currentVal === lockValue) {
+            await redis.del(lockKey);
+          }
+        } catch (err: any) {
+          console.warn(`[RedisLock] Failed to release lock: ${err.message}`);
+        }
+      }
+    }
   }
 }

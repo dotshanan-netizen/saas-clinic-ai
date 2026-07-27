@@ -1,1 +1,0 @@
-const { PrismaClient } = require('./src/generated/prisma'); const prisma = new PrismaClient(); prisma.clinic.findUnique({ where: { slug: 'rival-clinic' } }).then(c => console.log('Token:', c.whatsappToken)).catch(console.error).finally(() => prisma.$disconnect());

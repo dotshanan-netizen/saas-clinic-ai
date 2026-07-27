@@ -4,6 +4,7 @@ import { IncomingMessagePayload } from "./BullMQJobDispatcher";
 import { ConversationEngine } from "../../domain/ConversationEngine";
 import { ClinicWithCatalog } from "../../domain/types";
 import { decrypt } from "../../encryption";
+import { ConnectionManager } from "../resilience/ConnectionManager";
 
 const redisUrl = process.env.UPSTASH_REDIS_URL || "redis://localhost:6379";
 
@@ -53,7 +54,7 @@ export const incomingMessageWorker = new Worker(
         const [iv, authTag, encryptedData] = parts;
         const decryptedToken = decrypt(encryptedData, iv, authTag);
 
-        const metaResponse = await fetch(
+        const metaResponse = await ConnectionManager.withFetchResilience(
           `https://graph.facebook.com/v18.0/${clinic.whatsappPhoneId}/messages`,
           {
             method: "POST",
@@ -71,7 +72,8 @@ export const incomingMessageWorker = new Worker(
                 body: finalResponse.response,
               },
             }),
-          }
+          },
+          "Meta WhatsApp API"
         );
 
         if (!metaResponse.ok) {
