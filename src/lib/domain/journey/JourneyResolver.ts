@@ -1,57 +1,51 @@
 export type JourneyStage =
-  | "Idle"
-  | "Greeting"
-  | "Collecting_Service"
-  | "Collecting_Doctor"
-  | "Collecting_Time"
-  | "Pre_Validation"
-  | "Confirmed"
-  | "Booking Management"
-  | "Escalation";
+  | "IDLE"
+  | "GREETING"
+  | "COLLECTING_SERVICE"
+  | "COLLECTING_DOCTOR"
+  | "COLLECTING_TIME"
+  | "PRE_VALIDATION"
+  | "CONFIRMED"
+  | "BOOKING_MANAGEMENT"
+  | "ESCALATION";
 
 export class JourneyResolver {
-  static resolveStage(
-    history: { role: string; content: string }[],
-    currentState: Record<string, unknown>,
+  static transition(
+    currentStateName: string,
     intentId: string,
-    buyingIntent: string = "low",
-    isValidated: boolean = false
+    bookingCreated: boolean,
+    currentState: Record<string, unknown>
   ): JourneyStage {
-    if (intentId === "human_takeover" || intentId === "complaint" || intentId === "Escalation") {
-      return "Escalation";
+    const state = (currentStateName || "IDLE").toUpperCase() as JourneyStage;
+
+    if (intentId === "HumanTakeover" || intentId === "Complaint" || intentId === "Escalation") {
+      return "ESCALATION";
     }
 
-    if (intentId === "modify_booking" || intentId === "cancel_booking" || intentId === "ModifyBooking" || intentId === "CancelAppointment") {
-      return "Booking Management";
+    if (intentId === "ModifyBooking" || intentId === "CancelAppointment" || intentId === "Booking Management") {
+      return "BOOKING_MANAGEMENT";
     }
     
-    // Phase 1: FSM State Routing
     if (intentId === "Greeting" || intentId === "GeneralInquiry") {
-      return history.length <= 2 ? "Idle" : "Greeting";
+      return "GREETING";
     }
 
-    if (intentId === "booking" || intentId === "BookAppointment" || buyingIntent === "high") {
-      if (isValidated) {
-        return "Confirmed"; // Actually, confirmed is when booking is created
+    if (intentId === "BookAppointment") {
+      if (bookingCreated) {
+        return "IDLE";
       }
       if (!currentState.serviceName) {
-        return "Collecting_Service";
+        return "COLLECTING_SERVICE";
       }
       if (!currentState.doctorName) {
-        return "Collecting_Doctor";
+        return "COLLECTING_DOCTOR";
       }
       if (!currentState.timeSlot) {
-        return "Collecting_Time";
+        return "COLLECTING_TIME";
       }
-      
-      // If we have time but not confirmed yet
-      return "Pre_Validation";
+      return "PRE_VALIDATION";
     }
 
-    if (history.length === 0) {
-      return "Idle";
-    }
-
-    return "Greeting";
+    return state;
   }
 }

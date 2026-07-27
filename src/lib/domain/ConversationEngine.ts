@@ -54,6 +54,7 @@ export class ConversationEngine {
         Logger.info(`[ConversationEngine] Session timed out for ${clientPhone}, resetting state.`);
         if (conversation) {
           conversation.bookingDraft = null;
+          conversation.currentStateName = "IDLE";
         }
       }
     }
@@ -358,6 +359,13 @@ export class ConversationEngine {
     };
     history.push(assistantMsg);
 
+    const resolvedStage = JourneyResolver.transition(
+      conversation?.currentStateName || "IDLE",
+      aiResult.intent || "Unknown",
+      !!(bookingCreated || bookingModified),
+      currentState
+    );
+
     // 4. Update Conversation in DB via upsert to prevent unique constraint race conditions
     const MAX_DB_MESSAGES = 50;
     const historyToSave = history.length > MAX_DB_MESSAGES ? history.slice(-MAX_DB_MESSAGES) : history;
@@ -377,6 +385,7 @@ export class ConversationEngine {
         humanTakeover: aiResult.humanTakeover ? true : undefined,
         bookingDraft: draftToSave as unknown as Prisma.InputJsonValue,
         clientName: clientNameNew,
+        currentStateName: resolvedStage,
       },
       create: {
         clientPhone,
@@ -385,6 +394,7 @@ export class ConversationEngine {
         humanTakeover: aiResult.humanTakeover ? true : false,
         bookingDraft: draftToSave as unknown as Prisma.InputJsonValue,
         clientName: clientNameNew,
+        currentStateName: resolvedStage,
       },
     });
 
@@ -393,9 +403,6 @@ export class ConversationEngine {
                            aiResult.intent === "BookAppointment" ? "Booking" : 
                            aiResult.intent === "Objection" ? "Objection Handling" :
                            aiResult.intent;
-
-    const resolvedStage = (aiResult.intent === "ModifyBooking" || aiResult.intent === "CancelAppointment") ? "Booking Management" :
-                          JourneyResolver.resolveStage(history, currentState, aiResult.intent === "BookAppointment" ? "booking" : aiResult.intent, "low", bookingCreated);
 
     const resolvedPolicy = aiResult.intent === "ModifyBooking" ? "Modification Policy" :
                            aiResult.intent === "CancelAppointment" ? "Cancellation Policy" :
