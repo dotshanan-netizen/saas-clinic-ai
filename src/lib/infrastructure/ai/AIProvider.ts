@@ -40,6 +40,10 @@ export interface AIClassificationResult {
     completionTokens: number;
     totalTokens: number;
   } | null;
+  diagnostic?: {
+    systemPrompt: string;
+    rawResponse: string;
+  };
 }
 
 export class AIProvider {
@@ -114,7 +118,8 @@ ${doctorsMappingStr}
 ${availableSlotsText ? `\n--- الأوقات المتاحة فعلياً للطبيب المحدد ---\n${availableSlotsText}\nاعتمدي حصراً على هذه الأوقات ولا تقترحي أوقاتاً من خارجها.\n` : ""}
 
 التعليمات الفنية لعملك كمحرك ذكاء اصطناعي آمن:
-- إذا كان طلب المستخدم هو حجز موعد (مثل: "أبغى أحجز"، "احجز لي"، إلخ)، يجب أن تكون النية دائماً "BookAppointment"، حتى لو كانت بعض البيانات ناقصة.
+- إذا كان طلب المستخدم هو حجز موعد (مثل: "أبغى أحجز"، "احجز لي"، "أريد الحجز"، "عاوزة احجز"، "أبي موعد"، "أحتاج موعد"، "أبغى موعد"، "حجز"، إلخ)، يجب أن تكون النية دائماً "BookAppointment"، حتى لو كانت بعض البيانات ناقصة.
+- تنبيه هام: لا تجعلي النية أبداً "Unknown" عندما يطلب العميل حجز موعد بأي صيغة مشابهة — أي جملة تحتوي على كلمة "حجز" أو "موعد" أو "احجز" تعبر عن طلب حجز ما لم تكن صراحةً إلغاء أو تعديل.
 - لإنشاء حجز (BookAppointment)، يجب أن تجمعي 5 بيانات أساسية: (الاسم، الخدمة، الطبيب، الفرع، الوقت).
 - لا تقومي أبداً بتأكيد الحجز أو إخبار المستخدم بأنه "تم الحجز" إلا إذا اكتملت جميع البيانات الخمسة. إذا كانت هناك بيانات ناقصة، اجعلي النية "BookAppointment" واستمري في سؤال المستخدم عنها بلطف ضمن حقل "response".
 - اقترحي دائماً أوقاتاً متاحة وحقيقية من قائمة "الأوقات المتاحة فعلياً". إذا لم يذكر العميل طبيباً بعد، اطلبي منه اختيار الطبيب.
@@ -254,13 +259,35 @@ ${availableSlotsText ? `\n--- الأوقات المتاحة فعلياً للط�
       parsed = AIResponseSchema.parse({});
     }
 
+    // ── POST-AI INTENT SAFEGUARD ──────────────────────────────────────────────
+    // If the AI returned Unknown but the last user message clearly indicates a
+    // booking request, correct the intent to BookAppointment. This catches model
+    // failures where the AI fails to recognize common booking phrases despite
+    // explicit prompt instructions. The BusinessEngine also has a similar safety
+    // net (line 256-258) but earlier correction prevents empty responses from
+    // propagating through the Intent-Aware Merge.
+    const lastMsg = history.length > 0 ? history[history.length - 1] : null;
+    if ((parsed.intent === "Unknown" || parsed.intent === "Inquiry") && lastMsg?.role === "user") {
+      const userText = lastMsg.content || "";
+      const isBookingRequest = /حجز|أحجز|موعد|احجز|book/i.test(userText)
+        && !/إلغاء|كنسل|تعديل|تغيير|cancel|modify|delete/i.test(userText);
+      if (isBookingRequest) {
+        parsed.intent = "BookAppointment";
+      }
+    }
+    // ──────────────────────────────────────────────────────────────────────────
+
     return {
       response: parsed.response,
       intent: parsed.intent as AIIntent,
       humanTakeover: parsed.humanTakeover,
       requiresRag: parsed.requiresRag,
       bookingData: parsed.bookingData as ExtractedBookingData,
-      usage
+      usage,
+      diagnostic: {
+        systemPrompt,
+        rawResponse: rawJson,
+      }
     };
   }
 

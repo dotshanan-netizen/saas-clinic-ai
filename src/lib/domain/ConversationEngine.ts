@@ -72,6 +72,9 @@ export class ConversationEngine {
         },
       });
 
+      // Capture bookingDraft BEFORE any modifications for diagnostic logging
+      const bookingDraftBefore = conversation?.bookingDraft ? JSON.parse(JSON.stringify(conversation.bookingDraft)) : null;
+
       let history: ChatMessage[] = [];
       if (conversation && conversation.messages) {
         history = conversation.messages as unknown as ChatMessage[];

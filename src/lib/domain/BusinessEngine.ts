@@ -247,13 +247,13 @@ export class BusinessEngine {
       modifiedBookingData.timeSlot = extractedTime;
     }
 
-    const isNewBookingRequest = userMessage.match(/حجز|أحجز|حابة أحجز|ابغى احجز|أبي أحجز|أبغى أحجز/i) && !userMessage.match(/تعديل|تغيير|تغير/i);
+    const isNewBookingRequest = userMessage.match(/حجز|أحجز|موعد|احجز|عاوزة\s*احجز|عايز\s*احجز|أريد\s*الحجز|أبغى\s*(أحجز|موعد)|أبي\s*(أحجز|موعد)|أحتاج\s*(موعد|حجز)/i) && !userMessage.match(/تعديل|تغيير|تغير/i);
     let resolvedIntent = aiResult.intent;
     if (isNewBookingRequest && userMessage.match(/التواصل|رقم|جوال/i) && userMessage.match(/(?:05|966)\d{7,10}/)) {
       resolvedIntent = "BookAppointment";
     }
     
-    if (resolvedIntent === "Unknown" || resolvedIntent === "unknown" || !resolvedIntent) {
+    if (resolvedIntent === "Unknown" || resolvedIntent === "Inquiry" || resolvedIntent === "unknown" || !resolvedIntent) {
       if (isNewBookingRequest) {
         resolvedIntent = "BookAppointment";
       } else {

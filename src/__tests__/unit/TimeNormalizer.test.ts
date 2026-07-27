@@ -39,6 +39,146 @@ const mockClinic: ClinicWithCatalog = {
   ],
 };
 
+// ─────────────────────────────────────────────────────────────────────────────
+// SECTION 1: Numeric-Identifier Guard (Phantom Time Root-Cause Fix)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('TimeNormalizer Numeric-Identifier Guard (Phantom Time Fix)', () => {
+  // ── POSITIVE CASES: Must still accept valid time expressions ─────────────
+
+  it('should accept bare single-digit number "5"', () => {
+    const result = TimeNormalizer.normalize("5");
+    expect(result).not.toBeNull();
+    expect(result).toContain("05:00");
+  });
+
+  it('should accept bare two-digit number "05"', () => {
+    const result = TimeNormalizer.normalize("05");
+    expect(result).not.toBeNull();
+    expect(result).toContain("05:00");
+  });
+
+  it('should accept "5pm" with English meridiem', () => {
+    const result = TimeNormalizer.normalize("5pm");
+    expect(result).not.toBeNull();
+    expect(result).toContain("05:00 م");
+  });
+
+  it('should accept "5 pm" with space before meridiem', () => {
+    const result = TimeNormalizer.normalize("5 pm");
+    expect(result).not.toBeNull();
+    expect(result).toContain("05:00 م");
+  });
+
+  it('should accept "الساعة 5" with time keyword', () => {
+    const result = TimeNormalizer.normalize("الساعة 5");
+    expect(result).not.toBeNull();
+    expect(result).toContain("05:00");
+  });
+
+  it('should accept "17:00" with colon 24h format', () => {
+    const result = TimeNormalizer.normalize("17:00");
+    expect(result).not.toBeNull();
+    expect(result).toContain("05:00 م");
+  });
+
+  it('should accept "5:30" with colon half-hour', () => {
+    const result = TimeNormalizer.normalize("5:30");
+    expect(result).not.toBeNull();
+    expect(result).toContain("05:30");
+  });
+
+  it('should accept "٥ مساءً" with Arabic-Indic digit and meridiem', () => {
+    const result = TimeNormalizer.normalize("٥ مساءً");
+    expect(result).not.toBeNull();
+  });
+
+  it('should accept "10 صباحاً" with explicit Arabic AM', () => {
+    const result = TimeNormalizer.normalize("10 صباحاً");
+    expect(result).not.toBeNull();
+    expect(result).toContain("10:00 ص");
+  });
+
+  it('should accept "3 عصراً" with explicit Arabic PM', () => {
+    const result = TimeNormalizer.normalize("3 عصراً");
+    expect(result).not.toBeNull();
+    expect(result).toContain("03:00 م");
+  });
+
+  it('should accept "الأحد الساعة 10 ص" with full context', () => {
+    const result = TimeNormalizer.normalize("الأحد الساعة 10 ص");
+    expect(result).not.toBeNull();
+    expect(result).toContain("10:00 ص");
+  });
+
+  it('should accept "بكرة الساعة 2 الظهر" with relative day', () => {
+    const result = TimeNormalizer.normalize("بكرة الساعة 2 الظهر");
+    expect(result).not.toBeNull();
+    expect(result).toContain("02:00 م");
+  });
+
+  // ── NEGATIVE CASES: Must reject numeric identifiers ──────────────────────
+
+  it('should reject Saudi phone number "0501234567"', () => {
+    const result = TimeNormalizer.normalize("0501234567");
+    expect(result).toBeNull();
+  });
+
+  it('should reject international phone "+966501234567"', () => {
+    const result = TimeNormalizer.normalize("+966501234567");
+    expect(result).toBeNull();
+  });
+
+  it('should reject bare international "966501234567"', () => {
+    const result = TimeNormalizer.normalize("966501234567");
+    expect(result).toBeNull();
+  });
+
+  it('should reject random numeric ID "1234567890"', () => {
+    const result = TimeNormalizer.normalize("1234567890");
+    expect(result).toBeNull();
+  });
+
+  it('should reject invoice number "INV-20260727"', () => {
+    const result = TimeNormalizer.normalize("INV-20260727");
+    expect(result).toBeNull();
+  });
+
+  it('should reject tracking number "1Z999AA10123456784"', () => {
+    const result = TimeNormalizer.normalize("1Z999AA10123456784");
+    expect(result).toBeNull();
+  });
+
+  it('should reject short 3-digit "500"', () => {
+    const result = TimeNormalizer.normalize("500");
+    expect(result).toBeNull();
+  });
+
+  it('should reject short 3-digit "123"', () => {
+    const result = TimeNormalizer.normalize("123");
+    expect(result).toBeNull();
+  });
+
+  it('should reject short 4-digit "0500"', () => {
+    const result = TimeNormalizer.normalize("0500");
+    expect(result).toBeNull();
+  });
+
+  it('should reject "رقم 123456" (text with long number, no time signal)', () => {
+    const result = TimeNormalizer.normalize("رقم 123456");
+    expect(result).toBeNull();
+  });
+
+  it('should reject "order 99999" (English with long number)', () => {
+    const result = TimeNormalizer.normalize("order 99999");
+    expect(result).toBeNull();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SECTION 2: Idempotency & Digit Corruption (Original Tests)
+// ─────────────────────────────────────────────────────────────────────────────
+
 describe('TimeNormalizer Idempotency & Digit Corruption Tests', () => {
   it('should be strictly idempotent', () => {
     const input = "السبت (19 أغسطس) 11:00 ص";

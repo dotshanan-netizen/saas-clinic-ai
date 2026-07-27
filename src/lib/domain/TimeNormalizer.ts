@@ -74,6 +74,65 @@ export class TimeNormalizer {
   }
 
   /**
+   * Checks whether the text contains any signal that it is a time expression
+   * (as opposed to a bare numeric identifier like a phone number or ID).
+   */
+  private static hasTimeContextSignal(text: string): boolean {
+    // 1. Meridiem indicators (AM/PM in Arabic or English)
+    // NOTE: Single-letter ص/م are handled SEPARATELY below (via regex with digit-adjacency
+    // or token-boundary check) because text.includes("م") falsely matches Arabic words
+    // like "رقم" (number), "اسم" (name), "يوم" (day), etc.
+    const allMeridiemWords = [
+      // Arabic AM (multi-character only — single "ص" is handled separately)
+      "صباح", "الصباح", "صبح", "الصبح", "فجر", "الفجر", "صباحاً", "صباحا", "ضحى", "الضحى",
+      // Arabic PM (multi-character only — single "م" is handled separately)
+      "مساء", "المساء", "ظهر", "الظهر", "ظهرا", "ظهرًا", "عصر", "العصر", "عصرا", "عصراً",
+      "مغرب", "المغرب", "عشاء", "العشاء", "عشا", "العشا", "ليل", "الليل", "بالليل",
+      "مساءً", "مساءا", "الظهيرة", "ليلا",
+      // English
+      "am", "pm", "AM", "PM", "a.m.", "p.m.",
+    ];
+    for (const w of allMeridiemWords) {
+      if (text.includes(w)) return true;
+    }
+
+    // Single-letter AM/PM ص/م — must be adjacent to a digit or at token boundary
+    // Regex 1: digit + optional whitespace + ص/م (covers "5م", "5 م", "05:00م")
+    if (/[\d\u0660-\u0669][\s\uFEFF\xA0]?[صم]/.test(text)) return true;
+    // Regex 2: ص/م as a standalone token (whitespace/string boundaries around it)
+    if (/(?:^|[\s\uFEFF\xA0])[صم](?:$|[\s\uFEFF\xA0.,!?;:])/.test(text)) return true;
+
+    // 2. Time keyword (الساعة)
+    if (/الساعة|الساعه|السعة/i.test(text)) return true;
+
+    // 3. Colon or dot between digits (e.g. "5:30", "17:00", "5.30")
+    if (/\d{1,2}[:.]\d{2}/.test(text)) return true;
+
+    // 4. Arabic ordinal hour words (الخامسة, السادسة, etc.)
+    if (/(الواحدة|الثانية|الثالثة|الرابعة|الخامسة|السادسة|السابعة|الثامنة|التاسعة|العاشرة|الحادية عشرة|الحادية عشر|الثانية عشرة|الثانية عشر)/i.test(text)) return true;
+
+    // 5. Day-of-week references (الأحد, الاثنين, etc.)
+    for (const key of Object.keys(this.daysMap)) {
+      if (text.includes(key)) return true;
+    }
+
+    // 6. Relative day references (اليوم, بكرة, etc.)
+    for (const key of Object.keys(this.relativeDaysMap)) {
+      if (text.includes(key)) return true;
+    }
+
+    // 7. Month references (يناير, فبراير, etc.)
+    for (const key of Object.keys(this.monthsMap)) {
+      if (text.includes(key)) return true;
+    }
+
+    // 8. Already-normalized format
+    if (this.isNormalized(text)) return true;
+
+    return false;
+  }
+
+  /**
    * Normalizes a conversational Arabic time string into the official format: "اليوم (تاريخ) HH:MM ص/م"
    * Example: "الثلاثاء الساعة 11 الصباح" -> "الأحد (26 يوليو) 11:00 ص" (if next Tuesday is July 28)
    * Example: "12 أغسطس الساعة 10 ص" -> "الأربعاء (12 أغسطس) 10:00 ص"
@@ -91,6 +150,21 @@ export class TimeNormalizer {
       console.log(`[TIME_TRACE] TimeNormalizer.idempotent: "${_traceInput}" → "${text}"`);
       return text;
     }
+
+    // ── PHONE/NUMERIC-IDENTIFIER GUARD ──────────────────────────────────────────
+    // Reject bare numeric strings that look like phone numbers, IDs, or other
+    // non-time identifiers. A valid time expression must contain at least one
+    // time-context signal (meridiem, keyword, colon, ordinal hour, date reference),
+    // OR the numeric part must be short (1-2 digits, like "5" or "05").
+    // Without any time signal, sequences of 3+ consecutive digits are rejected
+    // as they are likely phone numbers (e.g. 0501234567), order IDs, etc.
+    if (!this.hasTimeContextSignal(text)) {
+      const digitSequences = text.match(/\d{3,}/g);
+      if (digitSequences && digitSequences.length > 0) {
+        return null;
+      }
+    }
+    // ─────────────────────────────────────────────────────────────────────────────
 
     const todayLocal = this.getClinicLocalDate(countryCode);
     let resolvedDatePart = "";

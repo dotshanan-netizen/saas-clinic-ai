@@ -5,8 +5,29 @@ export class ConnectionManager {
   private static redisInstances: Map<string, IORedis> = new Map();
 
   /**
+   * Connection names used only for simple distributed locking.
+   * These do NOT need BullMQ-compatible settings and must fail fast
+   * when Redis is unavailable, so the caller's catch block executes.
+   */
+  private static readonly LOCK_CONNECTION_NAMES = new Set(["conversation-lock"]);
+
+  /**
    * Retrieves or creates a resilient Redis connection.
-   * Enforces environment-specific offline queue policies.
+   *
+   * Two configuration profiles exist:
+   *
+   *   **Lock connections** (`conversation-lock`):
+   *   - `enableOfflineQueue: false` — reject commands immediately when offline
+   *   - `maxRetriesPerRequest: 3` — finite command retries, then throw
+   *   - `retryStrategy` stops after 5 attempts
+   *   - `connectTimeout: 5000` — fail initial connection after 5 s
+   *   - Purpose: fail fast so the caller's catch block can degrade gracefully
+   *
+   *   **All other connections** (BullMQ queues/workers):
+   *   - `maxRetriesPerRequest: null` — required by BullMQ
+   *   - `enableOfflineQueue: true` in production — jobs queued during disconnects
+   *   - `retryStrategy` reconnects forever with exponential backoff (capped at 3 s)
+   *   - Purpose: resilient queue operations
    */
   static getRedisConnection(name: string): IORedis {
     if (this.redisInstances.has(name)) {
@@ -15,18 +36,27 @@ export class ConnectionManager {
 
     const redisUrl = process.env.UPSTASH_REDIS_URL || "redis://localhost:6379";
     const isProd = process.env.NODE_ENV === "production";
-
-    // In production, we WANT offline queues so jobs aren't dropped during transient disconnects.
-    // In dev, we want to fail fast to prevent hanging the Next.js process if Redis is off.
-    const enableOfflineQueue = isProd;
+    const isLock = this.LOCK_CONNECTION_NAMES.has(name);
 
     const connection = new IORedis(redisUrl, {
-      maxRetriesPerRequest: null, // Required by BullMQ
-      enableOfflineQueue,
+      // Lock connections: finite retries so the command eventually throws.
+      // BullMQ connections: null = retry forever (required by BullMQ).
+      maxRetriesPerRequest: isLock ? 3 : null,
+
+      // Lock connections: reject immediately when offline → catch block runs.
+      // BullMQ prod: queue commands during transient disconnects.
+      // BullMQ dev: fail fast so local development doesn't hang.
+      enableOfflineQueue: isLock ? false : isProd,
+
       retryStrategy(times) {
-        // Exponential backoff with a cap of 3 seconds
+        // Lock connections: stop retrying after 5 attempts.
+        // BullMQ connections: keep retrying forever (cap at 3 s).
+        if (isLock && times > 5) return null;
         return Math.min(times * 100, 3000);
-      }
+      },
+
+      // Lock connections: fail initial TCP connect after 5 s.
+      connectTimeout: isLock ? 5000 : undefined,
     });
 
     // Handle errors to prevent UnhandledPromiseRejections crashing the Node process
