@@ -116,9 +116,25 @@ export class TimeNormalizer {
       }
     }
 
-    // 4. Extract Time (Hour and optionally Minute)
+    // Fix common typos in time expressions
+    text = text.replace(/السعة/g, "الساعة");
+
+    // Normalize Arabic-Indic digits (٠١٢٣٤٥٦٧٨٩) to standard ASCII digits (0-9)
+    text = text.replace(/[٠-٩]/g, (d) => "٠١٢٣٤٥٦٧٨٩".indexOf(d).toString());
+
+    // 4. DATE-PART ISOLATION RULE:
+    // Strip out any pre-extracted date expressions (e.g. "السبت (25 يوليو)" or "25 يوليو")
+    // so that day-of-month digits (like 25) do NOT get misparsed as time hours!
+    let timeSearchText = text;
+    if (fullDateMatch) {
+      timeSearchText = text.replace(fullDateRegex, "").trim();
+    } else {
+      timeSearchText = timeSearchText.replace(/(\d{1,2})\s*(?:من\s+)?(يناير|فبراير|مارس|أبريل|ابريل|مايو|يونيو|يوليو|أغسطس|اغسطس|سبتمبر|أكتوبر|اكتوبر|نوفمبر|ديسمبر|كانون الثاني|شباط|آذار|نيسان|أيار|حزيران|تموز|آب|أيلول|تشرين الأول|تشرين الثاني|كانون الأول|كانون|تشرين)/gi, "").trim();
+    }
+
+    // Extract Time (Hour and optionally Minute) from timeSearchText
     const timeRegex = /(?<!\(\s*|من\s*)([0-1]?[0-9])(?:[:.]([0-5][0-9]))?/;
-    const timeMatch = text.match(timeRegex);
+    const timeMatch = timeSearchText.match(timeRegex);
 
     // If no time is found, and we matched a date, return null so we ask for the time.
     if (!timeMatch) return null;
@@ -137,21 +153,28 @@ export class TimeNormalizer {
     let isPM = false;
     let isAM = false;
 
+    // Extended PM words including noon & afternoon terms
+    const extendedPmWords = [...this.pmWords, "ظهر", "الظهر", "ظهرا", "ظهرًا", "عصر", "العصر", "عصرا", "عصراً", "مساء", "المساء", "ليلا", "ليل", "م", "pm"];
+    const extendedAmWords = [...this.amWords, "صباحا", "صباحاً", "فجرا", "فجراً", "ص", "am"];
+
     const words = text.replace(/[:.0-9]/g, " ").split(/\s+/);
     for (const w of words) {
-      if (this.pmWords.includes(w)) { isPM = true; break; }
-      if (this.amWords.includes(w)) { isAM = true; break; }
+      if (extendedPmWords.includes(w)) { isPM = true; break; }
+      if (extendedAmWords.includes(w)) { isAM = true; break; }
     }
 
     const rawHour = parseInt(timeMatch[1], 10);
     if (rawHour >= 13 && rawHour < 24) {
+      isPM = true;
+    } else if (rawHour === 12 && !text.includes("منتصف الليل")) {
+      // In medical clinic operating hours, 12 or "صباحي 12" refers to 12:00 PM (noon)
       isPM = true;
     } else if (!isAM && !isPM) {
       // Context-based guess for clinic hours (typically 9AM–9PM)
       if (hour >= 1 && hour <= 8) {
         isPM = true; // 1–8 without context → afternoon (13:00–20:00)
       } else {
-        isAM = true; // 9, 10, 11, 12 → morning
+        isAM = true; // 9, 10, 11 → morning
       }
     }
 

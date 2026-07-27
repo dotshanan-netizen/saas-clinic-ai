@@ -12,6 +12,15 @@ function normalizeToOfficial(extracted: string | null, officialList: string[]): 
     (o) => o.toLowerCase().includes(clean) || clean.includes(o.toLowerCase())
   );
   if (partial) return partial;
+
+  // Title-stripping fuzzy match (e.g., "دكتورة سحر" vs "د. سحر")
+  const stripTitles = (str: string) => str.replace(/^(دكتورة|دكتور|د\.|د|أخصائية|الأخصائية|اخصائية)\s+/i, "").trim().toLowerCase();
+  const cleanStripped = stripTitles(clean);
+  if (cleanStripped) {
+    const titleMatch = officialList.find((o) => stripTitles(o) === cleanStripped || stripTitles(o).includes(cleanStripped) || cleanStripped.includes(stripTitles(o)));
+    if (titleMatch) return titleMatch;
+  }
+
   return null;
 }
 
@@ -64,19 +73,48 @@ export class BusinessEngine {
     let extractedBranch = !isUnset(aiResult.bookingData?.branchName) ? aiResult.bookingData!.branchName : currentState.branchName;
     let extractedTime = !isUnset(aiResult.bookingData?.timeSlot) ? aiResult.bookingData!.timeSlot : currentState.timeSlot;
 
+    // ── ACTIVE BOOKING SESSION DETECTION ───────────────────────────────────────
+    // If the AI returned NO booking intent AND NO booking-specific extracted data,
+    // this message is NOT a continuation of an active booking flow.
+    // Reset booking-specific fields to null to prevent stale state leakage.
+    // Name and phone are customer identity — they persist across conversations.
+    // This preserves booking continuation when the AI explicitly identifies it,
+    // while preventing greetings/unrelated messages from inheriting stale state.
+    const aiBookingIntent = aiResult.intent === "BookAppointment" || aiResult.intent === "ModifyBooking";
+    const aiExtractedBookingField = aiResult.bookingData && (
+      !isUnset(aiResult.bookingData.serviceName) ||
+      !isUnset(aiResult.bookingData.doctorName) ||
+      !isUnset(aiResult.bookingData.branchName) ||
+      !isUnset(aiResult.bookingData.timeSlot)
+    );
+    if (!aiBookingIntent && !aiExtractedBookingField) {
+      extractedService = null;
+      extractedDoctor = null;
+      extractedBranch = null;
+      extractedTime = null;
+    }
+    // ───────────────────────────────────────────────────────────────────────────
+
     if (!extractedName || extractedName === "null") {
-      const nameMatch = userMessage.match(/باسم\s+([^\s]+)/) || userMessage.match(/الاسم\s+([^\s]+)/);
+      const nameMatch = userMessage.match(/(?:اسمي|إسمي|أنا|انا|باسم|الاسم)\s+([^\s,.،]+)/i);
       if (nameMatch) extractedName = nameMatch[1].trim();
     }
-    if (!extractedPhone || extractedPhone === "null") {
-      const phoneMatch = userMessage.match(/(?:التواصل|رقم|جوال|هاتف|رقمي)\s*[:]?\s*([+]?[0-9\s-]{9,15})/i) || userMessage.match(/(?<!\d)(?:0)?5\d{8}(?!\d)/);
-      if (phoneMatch) extractedPhone = phoneMatch[1].replace(/[\s-]/g, "");
+    // PF-001 Fix: WhatsApp sender phone auto-injection per RUNTIME_STATE_AND_IDENTITY_ARCHITECTURE
+    if (!extractedPhone || extractedPhone === "null" || isUnset(extractedPhone)) {
+      if (clientPhone) {
+        extractedPhone = clientPhone;
+      }
     }
+
     if (!extractedService) {
       const foundService = normalizeToOfficial(userMessage, clinic.services.map(s => s.name));
       if (foundService) extractedService = foundService;
     }
-    if (!extractedDoctor) {
+
+    if (extractedDoctor) {
+      const normalizedDoc = normalizeToOfficial(extractedDoctor, clinic.doctors.map(d => d.name));
+      if (normalizedDoc) extractedDoctor = normalizedDoc;
+    } else {
       const foundDoctor = normalizeToOfficial(userMessage, clinic.doctors.map(d => d.name));
       if (foundDoctor) extractedDoctor = foundDoctor;
     }
@@ -150,6 +188,15 @@ export class BusinessEngine {
       }
     }
 
+    // PF-003 Fix: If a valid clinic service is identified in userMessage, upgrade intent to BookAppointment to break inquiry loop
+    // ARCHITECTURAL RULE: Do NOT escalate Inquiry to BookAppointment if the AI has already
+    // responded with specific availability information (contains time slot entries).
+    // The AI's response content determines the nature of the inquiry, not user keywords.
+    const aiProvidedAvailability = aiResult.response.match(/\d{1,2}:\d{2}\s+[صم]/);
+    if (extractedService && (resolvedIntent === "Inquiry" || resolvedIntent === "GeneralQuestion" || resolvedIntent === "Other" || !resolvedIntent) && !aiProvidedAvailability) {
+      resolvedIntent = "BookAppointment";
+    }
+
     // ── BOOKING CONTEXT ESCALATION ────────────────────────────────────────────
     // If user is already mid-booking (has service/doctor/branch in state) and
     // sends a short time expression like "طيب لو 10 ص" or "لو 3 مساء",
@@ -169,7 +216,12 @@ export class BusinessEngine {
       const doctorNames = clinic.doctors.map((d) => d.name);
 
       // Controlled Merge Guard using normalizeToOfficial
-      if (sanitizedData.branchName !== currentState.branchName) {
+      // ARCHITECTURAL RULE: Only protect values that CURRENTLY EXIST in state.
+      // When currentState is null (first extraction in a conversation), 
+      // the AI extraction is trusted. The guard prevents the AI from 
+      // OVERWRITING known values without user confirmation, but does NOT
+      // block NEW extractions.
+      if (currentState.branchName && sanitizedData.branchName !== currentState.branchName) {
         const hasMention = normalizeToOfficial(userMessage, branchNames) !== null;
         if (!hasMention) {
           sanitizedData.branchName = currentState.branchName || null;
@@ -177,7 +229,7 @@ export class BusinessEngine {
         }
       }
 
-      if (sanitizedData.serviceName !== currentState.serviceName) {
+      if (currentState.serviceName && sanitizedData.serviceName !== currentState.serviceName) {
         const hasMention = normalizeToOfficial(userMessage, serviceNames) !== null;
         if (!hasMention) {
           sanitizedData.serviceName = currentState.serviceName || null;
@@ -185,7 +237,7 @@ export class BusinessEngine {
         }
       }
 
-      if (sanitizedData.doctorName !== currentState.doctorName) {
+      if (currentState.doctorName && sanitizedData.doctorName !== currentState.doctorName) {
         const hasMention = normalizeToOfficial(userMessage, doctorNames) !== null;
         if (!hasMention) {
           sanitizedData.doctorName = currentState.doctorName || null;
@@ -233,17 +285,69 @@ export class BusinessEngine {
         // -- DOUBLE BOOKING GUARD START --
         const { BookingService } = await import("./BookingService");
         const availableSlots = await BookingService.getAvailableSlots(clinic.id, validation.normalizedDoctor!, validation.normalizedService || undefined);
+        const availableSlotKeys = Object.keys(availableSlots);
+        const totalSlotCount = Object.values(availableSlots).reduce((sum, slots) => sum + slots.length, 0);
+        console.log(JSON.stringify({
+          event: "DOUBLE_BOOKING_GUARD_CHECK",
+          searchTime: validation.cleanTimeSlot,
+          availableDays: availableSlotKeys,
+          totalAvailableSlots: totalSlotCount,
+        }));
         let slotIsAvailable = false;
         
         for (const slots of Object.values(availableSlots)) {
-          if (slots.includes(validation.cleanTimeSlot!)) {
-            slotIsAvailable = true;
-            break;
+          for (const slot of slots) {
+            const timeOnly = validation.cleanTimeSlot?.match(/\d{2}:\d{2}\s+[صم]/)?.[0];
+            const hourNumMatch = validation.cleanTimeSlot?.match(/(\d{1,2})/);
+            const userHour = hourNumMatch ? parseInt(hourNumMatch[1], 10) : null;
+
+            const slotHourMatch = slot.match(/(\d{1,2}):\d{2}\s+([صم])/);
+            const slotHour = slotHourMatch ? parseInt(slotHourMatch[1], 10) : null;
+
+            const exactMatch = slot === validation.cleanTimeSlot;
+            const endMatch = timeOnly && slot.endsWith(timeOnly);
+            const includeMatch = validation.cleanTimeSlot && slot.includes(validation.cleanTimeSlot);
+            const hourMatch = userHour !== null && slotHour !== null && userHour === slotHour;
+
+            if (exactMatch || endMatch || includeMatch || hourMatch) {
+              slotIsAvailable = true;
+              validation.cleanTimeSlot = slot;
+              // ARCHITECTURAL RULE: Availability Check does NOT modify
+              // Conversation Memory. modifiedBookingData is preserved
+              // as last-turn AI extraction, not overwritten by calendar.
+              console.log(JSON.stringify({
+                event: "DOUBLE_BOOKING_GUARD_MATCH",
+                slotMatched: slot,
+                matchType: exactMatch ? "exact" : endMatch ? "end" : includeMatch ? "include" : "hour",
+                requestedTime: timeOnly,
+                userHour,
+                slotHour,
+              }));
+              break;
+            }
           }
+          if (slotIsAvailable) break;
         }
         
         if (!slotIsAvailable) {
+          // DISTINGUISH: "no slots generated at all" vs "slot not found in generated list"
+          const isEmptySlots = totalSlotCount === 0;
+          console.log(JSON.stringify({
+            event: "DOUBLE_BOOKING_GUARD_NO_SLOT",
+            failureMode: isEmptySlots ? "NO_SLOTS_AVAILABLE" : "SLOT_NOT_IN_GENERATED_LIST",
+            searchedTime: validation.cleanTimeSlot,
+            availableDays: availableSlotKeys,
+            totalSlotsChecked: totalSlotCount,
+            normalizedDoctor: validation.normalizedDoctor,
+            normalizedService: validation.normalizedService,
+            hint: isEmptySlots
+              ? "getAvailableSlots returned ZERO slots. Check AVAILABLE_SLOTS_EMPTY event from BookingService for root cause (doctor not found, no schedules, or all closed)."
+              : "Slots were generated but the requested time did not match any. The slot format may differ or the time may genuinely be outside working hours.",
+          }));
           finalResponse = `عذراً، الوقت الذي اخترته (${validation.cleanTimeSlot}) لم يعد متاحاً. أرجو اختيار وقت آخر من الأوقات المتاحة. 🌷`;
+          // Clear the unavailable timeSlot from state so the conversation
+          // does NOT trap: on the next user message, currentState.timeSlot
+          // will be null, allowing the system to prompt for a new time.
           if (modifiedBookingData) {
             modifiedBookingData.timeSlot = null;
           }
@@ -424,14 +528,14 @@ export class BusinessEngine {
           }
         }
 
-        if (modifiedBookingData) {
-          if (validation.missingFields.includes("الاسم")) modifiedBookingData.clientName = null;
-          if (validation.missingFields.includes("رقم الجوال الصحيح") || validation.phoneRestricted) modifiedBookingData.clientPhone = null;
-          if (validation.missingFields.includes("الخدمة المطلوبة")) modifiedBookingData.serviceName = null;
-          if (validation.missingFields.includes("الفرع المفضل")) modifiedBookingData.branchName = null;
-          if (validation.missingFields.includes("الطبيب المفضل")) modifiedBookingData.doctorName = null;
-          if (validation.missingFields.includes("الوقت المناسب")) modifiedBookingData.timeSlot = null;
-        }
+        // Validation result is used for response generation only.
+        // ARCHITECTURAL RULE: Validation does NOT modify Conversation Memory.
+        // modifiedBookingData preserves whatever the AI extracted, even if
+        // some fields fail canonical matching. This prevents state loss across
+        // multi-turn booking flows when the user sends partial responses.
+        // The missing fields are communicated to the user via finalResponse above.
+        // Memory is only updated when the user explicitly provides new values
+        // or when a booking is successfully created/confirmed.
       }
     } else if (resolvedIntent === "CancelAppointment") {
       const defaultCountry = clinic.countryCode || "SA";

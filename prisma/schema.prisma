@@ -1,6 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
 generator client {
   provider        = "prisma-client-js"
   output          = "../src/generated/prisma"
@@ -12,6 +9,259 @@ datasource db {
   provider   = "postgresql"
   url        = env("DATABASE_URL")
   extensions = [vector]
+}
+
+model Clinic {
+  id                  String              @id @default(cuid())
+  name                String
+  createdAt           DateTime            @default(now())
+  customPrompt        String?
+  slug                String              @unique
+  contactPhone        String?
+  description         String?
+  isAiActive          Boolean             @default(true)
+  logoUrl             String?
+  operatingHours      String?
+  welcomeMessage      String?
+  whatsappPhoneId     String?
+  whatsappToken       String?
+  whatsappVerifyToken String?
+  whatsappWabaId      String?
+  allowedCountries    String              @default("SA")
+  countryCode         String              @default("SA")
+  bookings            Booking[]
+  branches            Branch[]
+  conversations       Conversation[]
+  doctors             Doctor[]
+  knowledgeBase       KnowledgeBase[]
+  knowledgeDocuments  KnowledgeDocument[]
+  services            Service[]
+  users               User[]
+}
+
+model Branch {
+  id           String         @id @default(cuid())
+  name         String
+  address      String
+  clinicId     String
+  createdAt    DateTime       @default(now())
+  city         String         @default("الرياض")
+  phone        String?
+  status       EntityStatus   @default(ACTIVE)
+  clinic       Clinic         @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  doctors      DoctorBranch[]
+  workingHours WorkingHour[]
+
+  @@index([clinicId])
+  @@index([status])
+}
+
+model WorkingHour {
+  id        String   @id @default(cuid())
+  branchId  String
+  dayOfWeek String
+  startTime String
+  endTime   String
+  isClosed  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  branch    Branch   @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  @@unique([branchId, dayOfWeek])
+  @@index([branchId])
+}
+
+model Doctor {
+  id        String           @id @default(cuid())
+  name      String
+  specialty String
+  clinicId  String
+  createdAt DateTime         @default(now())
+  imageUrl  String?
+  status    EntityStatus     @default(ACTIVE)
+  clinic    Clinic           @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  branches  DoctorBranch[]
+  schedules DoctorSchedule[]
+  services  DoctorService[]
+
+  @@index([clinicId])
+  @@index([status])
+}
+
+model DoctorSchedule {
+  id        String   @id @default(cuid())
+  doctorId  String
+  dayOfWeek String
+  startTime String
+  endTime   String
+  isClosed  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  doctor    Doctor   @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+
+  @@unique([doctorId, dayOfWeek])
+  @@index([doctorId])
+}
+
+model Service {
+  id              String          @id @default(cuid())
+  name            String
+  price           Float
+  description     String?
+  clinicId        String
+  createdAt       DateTime        @default(now())
+  durationMinutes Int             @default(30)
+  status          EntityStatus    @default(ACTIVE)
+  doctors         DoctorService[]
+  clinic          Clinic          @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+
+  @@index([clinicId])
+  @@index([status])
+}
+
+model DoctorBranch {
+  id       String @id @default(cuid())
+  doctorId String
+  branchId String
+  branch   Branch @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  doctor   Doctor @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+
+  @@unique([doctorId, branchId])
+  @@index([doctorId])
+  @@index([branchId])
+}
+
+model DoctorService {
+  id        String  @id @default(cuid())
+  doctorId  String
+  serviceId String
+  doctor    Doctor  @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  service   Service @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+
+  @@unique([doctorId, serviceId])
+  @@index([doctorId])
+  @@index([serviceId])
+}
+
+model KnowledgeBase {
+  id        String     @id @default(cuid())
+  content   String
+  clinicId  String
+  createdAt DateTime   @default(now())
+  category  KbCategory
+  deletedAt DateTime?
+  clinic    Clinic     @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+
+  @@index([clinicId])
+  @@index([createdAt])
+}
+
+model KnowledgeDocument {
+  id        String           @id @default(cuid())
+  title     String
+  category  KbCategory
+  language  String           @default("ar")
+  version   Int              @default(1)
+  source    String?
+  status    KnowledgeStatus  @default(DRAFT)
+  clinicId  String
+  branchId  String?
+  doctorId  String?
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+  chunks    KnowledgeChunk[]
+  clinic    Clinic           @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+
+  @@index([clinicId, status])
+}
+
+model KnowledgeChunk {
+  id         String                 @id @default(cuid())
+  documentId String
+  content    String
+  embedding  Unsupported("vector")?
+  document   KnowledgeDocument      @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@index([documentId])
+}
+
+model Booking {
+  id          String        @id @default(cuid())
+  clientName  String
+  clientPhone String
+  serviceName String
+  doctorName  String
+  branchName  String
+  timeSlot    String
+  source      String
+  clinicId    String
+  createdAt   DateTime      @default(now())
+  status      BookingStatus @default(PENDING)
+  clinic      Clinic        @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+
+  @@index([clinicId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model Conversation {
+  id            String   @id @default(cuid())
+  clientPhone   String
+  messages      Json
+  clinicId      String
+  updatedAt     DateTime @updatedAt
+  createdAt     DateTime @default(now())
+  humanTakeover Boolean  @default(false)
+  clinic        Clinic   @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+
+  @@unique([clinicId, clientPhone])
+  @@index([clinicId])
+  @@index([updatedAt])
+}
+
+model ProcessedWebhook {
+  id        String   @id
+  clinicId  String
+  createdAt DateTime @default(now())
+
+  @@index([clinicId])
+}
+
+model JobTracker {
+  id         String    @id @default(cuid())
+  jobId      String    @unique
+  type       String
+  status     JobStatus @default(PENDING)
+  payload    Json
+  attempts   Int       @default(0)
+  error      String?
+  startedAt  DateTime?
+  finishedAt DateTime?
+  createdAt  DateTime  @default(now())
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  name         String?
+  role         String   @default("STAFF")
+  clinicId     String
+  createdAt    DateTime @default(now())
+  clinic       Clinic   @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+
+  @@index([clinicId])
+}
+
+model MetricLog {
+  id          String   @id @default(cuid())
+  metricName  String
+  metricValue Float
+  clinicId    String
+  clientPhone String?
+  requestId   String?
+  createdAt   DateTime @default(now())
+
+  @@index([clinicId, metricName])
+  @@index([createdAt])
 }
 
 enum EntityStatus {
@@ -41,274 +291,11 @@ enum KbCategory {
 
 enum KnowledgeStatus {
   DRAFT
-  PROCESSING
   REVIEW
   APPROVED
   PUBLISHED
+  ARCHIVED
+  PROCESSING
   INDEXED
   FAILED
-  ARCHIVED
-}
-
-model Clinic {
-  id                  String         @id @default(cuid())
-  name                String
-  slug                String         @unique
-  logoUrl             String?
-  description         String?        @db.Text
-  contactPhone        String?
-  customPrompt        String?        @db.Text
-  welcomeMessage      String?        @db.Text
-  operatingHours      String?        @db.Text
-  
-  // WhatsApp Meta Cloud API Configuration
-  whatsappPhoneId     String?
-  whatsappToken       String?        @db.Text
-  whatsappWabaId      String?
-  whatsappVerifyToken String?
-  isAiActive          Boolean        @default(true)
-  countryCode         String         @default("SA")
-  allowedCountries    String         @default("SA") // e.g. "SA" or "SA,EG,AE"
-
-  createdAt           DateTime       @default(now())
-  branches            Branch[]
-  doctors             Doctor[]
-  services            Service[]
-  bookings            Booking[]
-  conversations       Conversation[]
-  knowledgeBase       KnowledgeBase[]
-  knowledgeDocuments  KnowledgeDocument[]
-  users               User[]
-}
-
-model Branch {
-  id             String         @id @default(cuid())
-  name           String
-  city           String         @default("الرياض")
-  address        String
-  phone          String?
-  status         EntityStatus   @default(ACTIVE)
-  clinicId       String
-  clinic         Clinic         @relation(fields: [clinicId], references: [id], onDelete: Cascade)
-  doctors        DoctorBranch[]
-  workingHours   WorkingHour[]
-  createdAt      DateTime       @default(now())
-
-  @@index([clinicId])
-  @@index([status])
-}
-
-model WorkingHour {
-  id        String   @id @default(cuid())
-  branchId  String
-  branch    Branch   @relation(fields: [branchId], references: [id], onDelete: Cascade)
-  dayOfWeek String   // e.g. "MONDAY", "TUESDAY", etc.
-  startTime String   // e.g. "09:00"
-  endTime   String   // e.g. "17:00"
-  isClosed  Boolean  @default(false)
-  createdAt DateTime @default(now())
-
-  @@unique([branchId, dayOfWeek])
-  @@index([branchId])
-}
-
-model Doctor {
-  id        String         @id @default(cuid())
-  name      String
-  specialty String
-  imageUrl  String?
-  status    EntityStatus   @default(ACTIVE)
-  clinicId  String
-  clinic    Clinic         @relation(fields: [clinicId], references: [id], onDelete: Cascade)
-  branches  DoctorBranch[]
-  services  DoctorService[]
-  schedules DoctorSchedule[]
-  createdAt DateTime       @default(now())
-
-  @@index([clinicId])
-  @@index([status])
-}
-
-model DoctorSchedule {
-  id        String   @id @default(cuid())
-  doctorId  String
-  doctor    Doctor   @relation(fields: [doctorId], references: [id], onDelete: Cascade)
-  dayOfWeek String   // e.g. "MONDAY", "TUESDAY", etc.
-  startTime String   // e.g. "09:00"
-  endTime   String   // e.g. "17:00"
-  isClosed  Boolean  @default(false)
-  createdAt DateTime @default(now())
-
-  @@unique([doctorId, dayOfWeek])
-  @@index([doctorId])
-}
-
-model Service {
-  id              String          @id @default(cuid())
-  name            String
-  description     String?         @db.Text
-  price           Float
-  durationMinutes Int             @default(30)
-  status          EntityStatus    @default(ACTIVE)
-  clinicId        String
-  clinic          Clinic          @relation(fields: [clinicId], references: [id], onDelete: Cascade)
-  doctors         DoctorService[]
-  createdAt       DateTime        @default(now())
-
-  @@index([clinicId])
-  @@index([status])
-}
-
-// Join model for Doctor-Branch relationship
-model DoctorBranch {
-  id       String @id @default(cuid())
-  doctorId String
-  doctor   Doctor @relation(fields: [doctorId], references: [id], onDelete: Cascade)
-  branchId String
-  branch   Branch @relation(fields: [branchId], references: [id], onDelete: Cascade)
-
-  @@unique([doctorId, branchId])
-  @@index([doctorId])
-  @@index([branchId])
-}
-
-// Join model for Doctor-Service relationship
-model DoctorService {
-  id        String  @id @default(cuid())
-  doctorId  String
-  doctor    Doctor  @relation(fields: [doctorId], references: [id], onDelete: Cascade)
-  serviceId String
-  service   Service @relation(fields: [serviceId], references: [id], onDelete: Cascade)
-
-  @@unique([doctorId, serviceId])
-  @@index([doctorId])
-  @@index([serviceId])
-}
-
-model KnowledgeBase {
-  id        String     @id @default(cuid())
-  category  KbCategory
-  content   String     @db.Text
-  clinicId  String
-  clinic    Clinic     @relation(fields: [clinicId], references: [id], onDelete: Cascade)
-  createdAt DateTime   @default(now())
-  deletedAt DateTime?
-
-  @@index([clinicId])
-  @@index([createdAt])
-}
-
-model KnowledgeDocument {
-  id          String          @id @default(cuid())
-  title       String
-  category    KbCategory
-  language    String          @default("ar")
-  version     Int             @default(1)
-  source      String?         // e.g., "Pricing.pdf", "Manual Entry"
-  status      KnowledgeStatus @default(DRAFT)
-  
-  // Metadata for filtering
-  clinicId    String
-  branchId    String?
-  doctorId    String?
-
-  createdAt   DateTime        @default(now())
-  updatedAt   DateTime        @updatedAt
-
-  chunks      KnowledgeChunk[]
-  clinic      Clinic          @relation(fields: [clinicId], references: [id], onDelete: Cascade)
-  
-  @@index([clinicId, status])
-}
-
-model KnowledgeChunk {
-  id          String            @id @default(cuid())
-  documentId  String
-  document    KnowledgeDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
-  
-  content     String            @db.Text
-  embedding   Unsupported("vector(768)")?
-
-  @@index([documentId])
-}
-
-model Booking {
-  id          String        @id @default(cuid())
-  clientName  String
-  clientPhone String
-  serviceName String
-  doctorName  String
-  branchName  String
-  timeSlot    String
-  source      String        // e.g. "Snapchat", "Instagram", "Google", "Simulator"
-  status      BookingStatus @default(PENDING)
-  clinicId    String
-  clinic      Clinic        @relation(fields: [clinicId], references: [id], onDelete: Cascade)
-  createdAt   DateTime      @default(now())
-
-  @@index([clinicId])
-  @@index([status])
-  @@index([createdAt])
-}
-
-model Conversation {
-  id            String   @id @default(cuid())
-  clientPhone   String
-  messages      Json     // Array of message objects {role: "user"|"assistant", content: string, timestamp: Date}
-  clinicId      String
-  clinic        Clinic   @relation(fields: [clinicId], references: [id], onDelete: Cascade)
-  humanTakeover Boolean  @default(false)
-  updatedAt     DateTime @updatedAt
-  createdAt     DateTime @default(now())
-
-  @@unique([clinicId, clientPhone])
-  @@index([clinicId])
-  @@index([updatedAt])
-}
-
-model ProcessedWebhook {
-  id        String   @id // The wamid from Meta
-  clinicId  String
-  createdAt DateTime @default(now())
-
-  @@index([clinicId])
-}
-
-model JobTracker {
-  id          String    @id @default(cuid())
-  jobId       String    @unique // BullMQ Job ID
-  type        String    // e.g., "incoming-message"
-  status      JobStatus @default(PENDING)
-  payload     Json
-  attempts    Int       @default(0)
-  error       String?   @db.Text
-  startedAt   DateTime?
-  finishedAt  DateTime?
-  createdAt   DateTime  @default(now())
-}
-
-model User {
-  id           String   @id @default(cuid())
-  email        String   @unique
-  passwordHash String
-  name         String?
-  role         String   @default("STAFF") // "ADMIN" | "STAFF"
-  clinicId     String
-  clinic       Clinic   @relation(fields: [clinicId], references: [id], onDelete: Cascade)
-  createdAt    DateTime @default(now())
-
-  @@index([clinicId])
-}
-
-model MetricLog {
-  id          String   @id @default(cuid())
-  metricName  String   // e.g. "llm_latency_ms", "prompt_tokens"
-  metricValue Float
-  clinicId    String
-  clientPhone String?
-  requestId   String?
-  createdAt   DateTime @default(now())
-
-  @@index([clinicId, metricName])
-  @@index([createdAt])
 }

@@ -114,6 +114,22 @@ export async function POST(request: Request) {
         );
       }
 
+      // Synchronize Conversation updatedAt to preserve position in Reception Workspace
+      const { extractSaudiPhone } = await import("@/lib/domain/types");
+      const defaultCountry = ownerClinic.countryCode || "SA";
+      const bCanonical = extractSaudiPhone(currentBooking.clientPhone, defaultCountry) || currentBooking.clientPhone;
+
+      await prisma.conversation.updateMany({
+        where: {
+          clinicId: ownerClinic.id,
+          OR: [
+            { clientPhone: currentBooking.clientPhone },
+            { clientPhone: bCanonical }
+          ]
+        },
+        data: { updatedAt: new Date() }
+      });
+
       // Fetch the final updated record to return
       const updatedBooking = await prisma.booking.findUnique({
         where: { id: bookingId }

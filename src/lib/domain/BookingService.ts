@@ -49,7 +49,18 @@ export class BookingService {
       }
     }
 
-    if (targetDoctors.length === 0) return {};
+    if (targetDoctors.length === 0) {
+      console.log(JSON.stringify({
+        event: "AVAILABLE_SLOTS_EMPTY",
+        reason: "DOCTOR_NOT_FOUND_IN_DB",
+        clinicId,
+        doctorNameSearched: doctorName,
+        serviceFilter: serviceName || null,
+        timestamp: new Date().toISOString(),
+        hint: "The doctor name passed to getAvailableSlots did not match any ACTIVE doctor record in the database. Check: (1) doctor exists in DB with this exact name, (2) doctor status is ACTIVE, (3) normalizeToOfficial output matches DB stored name exactly."
+      }));
+      return {};
+    }
 
     const targetDoctorNames = targetDoctors.map((d) => d.name);
     const existingBookings = await prisma.booking.findMany({
@@ -127,6 +138,35 @@ export class BookingService {
       }
       doctorsSlots.push(docSlots);
     }
+
+    // ── DIAGNOSTIC: Log when zero slots were generated ─────────────────────
+    const totalGeneratedSlots = doctorsSlots.reduce((sum, ds) => sum + Object.keys(ds).length, 0);
+    if (totalGeneratedSlots === 0) {
+      const diagnosticPayload: any = {
+        event: "AVAILABLE_SLOTS_EMPTY",
+        reason: "NO_SLOTS_GENERATED",
+        clinicId,
+        doctorNameSearched: doctorName,
+        targetDoctorCount: targetDoctors.length,
+        targetDoctorNames: targetDoctors.map((d: any) => ({ name: d.name, scheduleCount: d.schedules?.length || 0 })),
+        today: format(new Date(), "yyyy-MM-dd"),
+        timestamp: new Date().toISOString(),
+      };
+
+      // Add per-doctor schedule breakdown for deep diagnostics
+      diagnosticPayload.doctorScheduleDetails = targetDoctors.map((d: any) => ({
+        name: d.name,
+        schedules: (d.schedules || []).map((s: any) => ({
+          dayOfWeek: s.dayOfWeek,
+          startTime: s.startTime,
+          endTime: s.endTime,
+          isClosed: s.isClosed,
+        })),
+      }));
+
+      console.log(JSON.stringify(diagnosticPayload));
+    }
+    // ───────────────────────────────────────────────────────────────────────
 
     // Merge slots by dayKey
     const mergedAvailableSlots: Record<string, string[]> = {};

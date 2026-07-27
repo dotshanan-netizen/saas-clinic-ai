@@ -63,14 +63,29 @@ export async function GET(request: Request) {
 
     console.log(`DEBUG API: Found ${activeBookings.length} bookings for clinic ${clinic.id}`);
 
+    const { extractSaudiPhone } = await import("@/lib/domain/types");
+    const defaultCountry = clinic.countryCode || "SA";
+
     const result = conversations.map((conv) => {
-      const booking = activeBookings.find(b => b.clientPhone === conv.clientPhone);
+      const convCanonical = extractSaudiPhone(conv.clientPhone, defaultCountry) || conv.clientPhone;
+      const booking = activeBookings.find(b => {
+        const bCanonical = extractSaudiPhone(b.clientPhone, defaultCountry) || b.clientPhone;
+        return b.clientPhone === conv.clientPhone || (bCanonical && convCanonical && bCanonical === convCanonical);
+      });
+
+      // Extract last message content from conversation history
+      const messages = conv.messages as unknown as Array<{ role: string; content: string }> | null;
+      const lastMessage = messages && messages.length > 0
+        ? messages[messages.length - 1].content
+        : null;
+
       return {
         id: conv.id,
         clientPhone: conv.clientPhone,
         clientName: booking?.clientName || null,
         serviceName: booking?.serviceName || null,
         status: booking?.status || "NEW",
+        lastMessage,
         updatedAt: conv.updatedAt,
       };
     });

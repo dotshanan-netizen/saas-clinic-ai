@@ -1,11 +1,12 @@
 export type JourneyStage =
-  | "Discovery"
-  | "Exploration"
-  | "Evaluation"
-  | "Decision"
-  | "Booking"
+  | "Idle"
+  | "Greeting"
+  | "Collecting_Service"
+  | "Collecting_Doctor"
+  | "Collecting_Time"
+  | "Pre_Validation"
+  | "Confirmed"
   | "Booking Management"
-  | "Aftercare"
   | "Escalation";
 
 export class JourneyResolver {
@@ -13,32 +14,44 @@ export class JourneyResolver {
     history: { role: string; content: string }[],
     currentState: Record<string, unknown>,
     intentId: string,
-    buyingIntent: string = "low"
+    buyingIntent: string = "low",
+    isValidated: boolean = false
   ): JourneyStage {
-    if (intentId === "human_takeover" || intentId === "complaint") {
+    if (intentId === "human_takeover" || intentId === "complaint" || intentId === "Escalation") {
       return "Escalation";
     }
 
-    if (intentId === "modify_booking" || intentId === "cancel_booking") {
+    if (intentId === "modify_booking" || intentId === "cancel_booking" || intentId === "ModifyBooking" || intentId === "CancelAppointment") {
       return "Booking Management";
     }
-
-    if (intentId === "aftercare") {
-      return "Aftercare";
+    
+    // Phase 1: FSM State Routing
+    if (intentId === "Greeting" || intentId === "GeneralInquiry") {
+      return history.length <= 2 ? "Idle" : "Greeting";
     }
 
-    if (intentId === "booking" || buyingIntent === "high") {
-      return "Booking";
+    if (intentId === "booking" || intentId === "BookAppointment" || buyingIntent === "high") {
+      if (isValidated) {
+        return "Confirmed"; // Actually, confirmed is when booking is created
+      }
+      if (!currentState.serviceName) {
+        return "Collecting_Service";
+      }
+      if (!currentState.doctorName) {
+        return "Collecting_Doctor";
+      }
+      if (!currentState.timeSlot) {
+        return "Collecting_Time";
+      }
+      
+      // If we have time but not confirmed yet
+      return "Pre_Validation";
     }
 
-    if (intentId === "price_inquiry" || intentId === "service_inquiry" || intentId === "doctor_inquiry") {
-      return "Exploration";
+    if (history.length === 0) {
+      return "Idle";
     }
 
-    if (history.length <= 2) {
-      return "Discovery";
-    }
-
-    return "Exploration";
+    return "Greeting";
   }
 }

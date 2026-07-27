@@ -9,6 +9,7 @@ interface ConversationItem {
   clientName: string | null;
   serviceName: string | null;
   status: string;
+  lastMessage: string | null;
   updatedAt: string;
 }
 
@@ -313,7 +314,7 @@ export default function Dashboard() {
                     </div>
 
                     <div className="text-[10px] text-zinc-400 truncate text-right w-full leading-relaxed">
-                      {getMockLastMessage(conv.status)}
+                      {conv.lastMessage || getMockLastMessage(conv.status)}
                     </div>
 
                     <div className="flex items-center justify-between w-full mt-1 pt-2 border-t border-zinc-900">

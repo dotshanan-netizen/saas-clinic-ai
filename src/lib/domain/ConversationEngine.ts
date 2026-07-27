@@ -40,6 +40,19 @@ export class ConversationEngine {
     let history: ChatMessage[] = [];
     if (conversation && conversation.messages) {
       history = conversation.messages as unknown as ChatMessage[];
+      
+      // Phase 1: Check lastInteraction timeout (15 mins)
+      const lastInteraction = conversation.updatedAt.getTime();
+      const now = Date.now();
+      if (now - lastInteraction > 15 * 60 * 1000) {
+        history.push({
+          role: "system",
+          content: "SESSION_TIMEOUT_RESET",
+          timestamp: new Date().toISOString(),
+          sessionReset: true
+        });
+        Logger.info(`[ConversationEngine] Session timed out for ${clientPhone}, resetting state.`);
+      }
     }
 
     // Check if Human Takeover is active
@@ -130,14 +143,28 @@ export class ConversationEngine {
       });
     }
 
+    // 1.6 Reconstruct current booking state per Customer Memory Policy Matrix:
+    // Persistent profile fields (Name, Phone) persist across conversations.
+    // Transient booking fields (Service, Doctor, Branch, Time) are isolated to the active session.
+    let persistentClientName = activeBooking?.clientName || null;
+    if (!persistentClientName) {
+      for (let i = history.length - 1; i >= 0; i--) {
+        const msg = history[i];
+        if (msg.bookingData?.clientName) {
+          persistentClientName = sanitizeAIValue(msg.bookingData.clientName);
+          if (persistentClientName) break;
+        }
+      }
+    }
+
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const currentState: any = {
-      clientName: activeBooking?.clientName || null,
-      clientPhone: activeBooking?.clientPhone || null, // null by default, resolved to whatsapp number downstream if no custom number provided
-      serviceName: activeBooking?.serviceName || null,
-      doctorName: activeBooking?.doctorName || null,
-      branchName: activeBooking?.branchName || null,
-      timeSlot: activeBooking?.timeSlot || null
+      clientName: persistentClientName,
+      clientPhone: activeBooking?.clientPhone || null,
+      serviceName: isModificationOrCancel ? (activeBooking?.serviceName || null) : null,
+      doctorName: isModificationOrCancel ? (activeBooking?.doctorName || null) : null,
+      branchName: isModificationOrCancel ? (activeBooking?.branchName || null) : null,
+      timeSlot: isModificationOrCancel ? (activeBooking?.timeSlot || null) : null
     };
     
     let startFromIndex = 0;
@@ -152,12 +179,19 @@ export class ConversationEngine {
       if (msg.role === "assistant" && msg.bookingData) {
         for (const key of Object.keys(msg.bookingData)) {
           const val = sanitizeAIValue(msg.bookingData[key as keyof typeof msg.bookingData]);
-          currentState[key] = val;
+          if (val) {
+            currentState[key] = val;
+          }
         }
       }
     }
 
-    // If it's a modification/cancellation request, ensure database state overrides the history resets
+    // Always ensure persistent name is maintained if known
+    if (persistentClientName && !currentState.clientName) {
+      currentState.clientName = persistentClientName;
+    }
+
+    // If it's a modification/cancellation request, ensure database state overrides history
     if (isModificationOrCancel && activeBooking) {
       currentState.clientName = activeBooking.clientName;
       currentState.clientPhone = activeBooking.clientPhone;
@@ -239,19 +273,65 @@ export class ConversationEngine {
         Logger.info(`[Performance Warning] LLM Latency exceeded 3000ms threshold: ${llmLatency}ms`, { requestId, clinicId: clinic.id, clientPhone, llmLatency });
       }
       
-      // Retain previously gathered data if AI omits it
+      // Retain previously gathered data if AI omits it.
+      // ARCHITECTURAL RULE: Intent-Aware Merge.
+      // - Booking intents (BookAppointment, ModifyBooking): Full merge from
+      //   currentState to handle AI omissions during multi-turn booking flows.
+      // - Non-booking intents (Inquiry, Complaint, etc.): Identity-only merge.
+      //   Booking fields are explicitly nulled to prevent stale state contamination.
+      //   The BusinessEngine Active Session Gate then correctly detects that
+      //   no booking activity is happening and resets the stale fields.
+      const isBookingIntent = aiResult.intent === "BookAppointment" || aiResult.intent === "ModifyBooking";
       if (aiResult.bookingData) {
-        aiResult.bookingData = {
-          clientName: aiResult.bookingData.clientName || currentState.clientName,
-          clientPhone: aiResult.bookingData.clientPhone || currentState.clientPhone,
-          serviceName: aiResult.bookingData.serviceName || currentState.serviceName,
-          doctorName: aiResult.bookingData.doctorName || currentState.doctorName,
-          branchName: aiResult.bookingData.branchName || currentState.branchName,
-          timeSlot: aiResult.bookingData.timeSlot || currentState.timeSlot,
-        };
+        if (isBookingIntent) {
+          aiResult.bookingData = {
+            clientName: aiResult.bookingData.clientName || currentState.clientName,
+            clientPhone: aiResult.bookingData.clientPhone || currentState.clientPhone,
+            serviceName: aiResult.bookingData.serviceName || currentState.serviceName,
+            doctorName: aiResult.bookingData.doctorName || currentState.doctorName,
+            branchName: aiResult.bookingData.branchName || currentState.branchName,
+            timeSlot: aiResult.bookingData.timeSlot || currentState.timeSlot,
+          };
+        } else {
+          // Identity-only: preserve customer identity, null out transient booking fields
+          aiResult.bookingData = {
+            clientName: aiResult.bookingData.clientName || currentState.clientName,
+            clientPhone: aiResult.bookingData.clientPhone || currentState.clientPhone,
+            serviceName: null,
+            doctorName: null,
+            branchName: null,
+            timeSlot: null,
+          };
+        }
       } else {
-        aiResult.bookingData = currentState;
+        // AI returned no bookingData at all — use intent to decide fallback
+        aiResult.bookingData = isBookingIntent
+          ? currentState
+          : {
+              clientName: currentState.clientName,
+              clientPhone: currentState.clientPhone,
+              serviceName: null,
+              doctorName: null,
+              branchName: null,
+              timeSlot: null,
+            };
       }
+
+      // Phase 1: Explicitly clear state and reset if non-booking intent (Inquiry, Complaint, Objection, Unknown, etc.)
+      const nonBookingIntents = ["Inquiry", "Complaint", "Objection", "Unknown", "unknown", "HumanTakeover"];
+      if (nonBookingIntents.includes(aiResult.intent) || (!aiResult.intent && !isBookingIntent)) {
+         currentState.serviceName = null;
+         currentState.doctorName = null;
+         currentState.branchName = null;
+         currentState.timeSlot = null;
+         history.push({
+           role: "system",
+           content: "INTENT_RESET",
+           timestamp: new Date().toISOString(),
+           sessionReset: true
+         });
+      }
+
 
       // 3. Process Business Rules
       const result = await BusinessEngine.processIntent(clinic, clientPhone, message, aiResult, source, currentState);
@@ -332,7 +412,7 @@ export class ConversationEngine {
                            aiResult.intent;
 
     const resolvedStage = (aiResult.intent === "ModifyBooking" || aiResult.intent === "CancelAppointment") ? "Booking Management" :
-                          JourneyResolver.resolveStage(history, currentState, aiResult.intent === "BookAppointment" ? "booking" : aiResult.intent);
+                          JourneyResolver.resolveStage(history, currentState, aiResult.intent === "BookAppointment" ? "booking" : aiResult.intent, "low", bookingCreated);
 
     const resolvedPolicy = aiResult.intent === "ModifyBooking" ? "Modification Policy" :
                            aiResult.intent === "CancelAppointment" ? "Cancellation Policy" :
@@ -350,6 +430,17 @@ export class ConversationEngine {
     }
 
     Logger.info("Request processed successfully", { requestId, clinicId: clinic.id, clientPhone, intent: resolvedIntent, stage: resolvedStage, policy: resolvedPolicy, totalLatency });
+
+    console.log(JSON.stringify({
+      event: "PIPELINE_RESULT",
+      requestId,
+      response: finalResponse,
+      timeSlot: modifiedBookingData?.timeSlot || null,
+      bookingCreated: bookingCreated || bookingModified,
+      intent: resolvedIntent,
+      stage: resolvedStage,
+      policy: resolvedPolicy,
+    }));
 
     return {
       response: finalResponse,

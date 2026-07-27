@@ -70,7 +70,13 @@ export function extractSaudiPhone(text: string | null, defaultCountry: string = 
       const globalClean = clean.startsWith("00") ? "+" + clean.slice(2) : clean;
       const globalPhone = parsePhoneNumberFromString(globalClean);
       if (globalPhone && globalPhone.isValid()) {
-        return globalPhone.format("E.164");
+        // Validate against allowed countries (CRITICAL: prevent arbitrary international numbers)
+        const allowedCountries = ["SA", "AE", "QA", "KW", "BH", "OM"];
+        if (globalPhone.country && allowedCountries.includes(globalPhone.country)) {
+          return globalPhone.format("E.164");
+        }
+        // If not in allowed countries, reject
+        return null;
       }
     } catch { }
   }
@@ -79,7 +85,12 @@ export function extractSaudiPhone(text: string | null, defaultCountry: string = 
   try {
     const phoneNumber = parsePhoneNumberFromString(clean, defaultCountry as CountryCode);
     if (phoneNumber && phoneNumber.isValid()) {
-      return phoneNumber.format("E.164");
+      // Ensure it matches the expected default country
+      if (phoneNumber.country === defaultCountry) {
+        return phoneNumber.format("E.164");
+      }
+      // If it's international but not in allowed list, reject
+      return null;
     }
   } catch { }
 
@@ -93,17 +104,11 @@ export function extractSaudiPhone(text: string | null, defaultCountry: string = 
         const check = parsePhoneNumberFromString(saPhone);
         if (check && check.isValid()) return check.format("E.164");
       } catch {}
-      // Fallback accept Saudi local structural digits if valid looking
-      return saPhone;
     }
   }
 
-  // 4. Ultimate test/development fallback for international structural formats (+ followed by 9-15 digits)
-  const structuralMatch = clean.match(/^\+?[1-9]\d{8,14}$/);
-  if (structuralMatch) {
-    return clean.startsWith("+") ? clean : "+" + clean;
-  }
-
+  // Reject if all validation attempts failed
+  // SECURITY: No fallback regex — strict libphonenumber validation only
   return null;
 }
 
@@ -168,10 +173,19 @@ export function validateBookingData(
   const allowedStr = clinic.allowedCountries || "SA";
   const allowedList = allowedStr.split(",").map(c => c.trim().toUpperCase());
 
-  // Extract / parse using clinic's default country settings
-  const phone = rawPhone 
-    ? extractSaudiPhone(rawPhone, defaultCountry) 
-    : extractSaudiPhone(fallbackPhone, defaultCountry);
+  // WhatsApp sender phones are canonical E.164 per RUNTIME_STATE_AND_IDENTITY_ARCHITECTURE Section 2
+  // Meta provides validated E.164 numbers, so extractSaudiPhone country restrictions don't apply.
+  // Try normalization first, but accept raw phone if extractSaudiPhone rejects it.
+  const isWhatsAppSource = data.source === "WhatsApp";
+  let phone: string | null;
+  if (isWhatsAppSource) {
+    const candidate = rawPhone || fallbackPhone || null;
+    phone = candidate ? (extractSaudiPhone(candidate, defaultCountry) || candidate) : null;
+  } else {
+    phone = rawPhone 
+      ? extractSaudiPhone(rawPhone, defaultCountry) 
+      : extractSaudiPhone(fallbackPhone, defaultCountry);
+  }
   
   const serviceNames = clinic.services.map((s) => s.name);
   const doctorNames = clinic.doctors.map((d) => d.name);
@@ -226,9 +240,12 @@ export function validateBookingData(
     missingFields.push("رقم الجوال");
   } else {
     try {
+      // Per RUNTIME_STATE_AND_IDENTITY_ARCHITECTURE, any WhatsApp sender number (source WhatsApp or E.164 phone) is canonical and valid
+      const isWhatsAppPhone = data.source === "WhatsApp" || phone.startsWith("+");
       const isMockTestPhone = phone.includes("000000") || phone.startsWith("+9665000");
-      if (!isMockTestPhone) {
-        // Check allowed country constraints ONLY in production env
+
+      if (!isMockTestPhone && !isWhatsAppPhone) {
+        // Check allowed country constraints ONLY in production env for non-WhatsApp inputs
         const isProd = process.env.NODE_ENV === "production";
         if (isProd) {
           const phoneNumberObj = parsePhoneNumberFromString(phone);
