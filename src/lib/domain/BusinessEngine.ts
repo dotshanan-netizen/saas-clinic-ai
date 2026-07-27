@@ -317,6 +317,7 @@ export class BusinessEngine {
             
             // 🚧 TIME_TRACE (Phase A)
             if (exactMatch || endMatch || includeMatch || hourMatch) {
+              slotIsAvailable = true;
               console.log(`[TIME_TRACE] SlotMatched: slot="${slot}" cleanTime="${validation.cleanTimeSlot}" timeOnly="${timeOnly}" userHour=${userHour} slotHour=${slotHour} exact=${exactMatch} end=${endMatch} include=${includeMatch} hour=${hourMatch}`);
               validation.cleanTimeSlot = slot;
               // ARCHITECTURAL RULE: Availability Check does NOT modify

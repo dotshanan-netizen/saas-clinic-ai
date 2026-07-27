@@ -52,6 +52,9 @@ export class ConversationEngine {
           sessionReset: true
         });
         Logger.info(`[ConversationEngine] Session timed out for ${clientPhone}, resetting state.`);
+        if (conversation) {
+          conversation.bookingDraft = null;
+        }
       }
     }
 
@@ -146,52 +149,25 @@ export class ConversationEngine {
     // 1.6 Reconstruct current booking state per Customer Memory Policy Matrix:
     // Persistent profile fields (Name, Phone) persist across conversations.
     // Transient booking fields (Service, Doctor, Branch, Time) are isolated to the active session.
-    let persistentClientName = activeBooking?.clientName || null;
-    if (!persistentClientName) {
-      for (let i = history.length - 1; i >= 0; i--) {
-        const msg = history[i];
-        if (msg.bookingData?.clientName) {
-          persistentClientName = sanitizeAIValue(msg.bookingData.clientName);
-          if (persistentClientName) break;
-        }
-      }
-    }
-
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const currentState: any = {
-      clientName: persistentClientName,
+    let currentState: any = {
+      clientName: conversation?.clientName || activeBooking?.clientName || null,
       clientPhone: activeBooking?.clientPhone || null,
       serviceName: isModificationOrCancel ? (activeBooking?.serviceName || null) : null,
       doctorName: isModificationOrCancel ? (activeBooking?.doctorName || null) : null,
       branchName: isModificationOrCancel ? (activeBooking?.branchName || null) : null,
       timeSlot: isModificationOrCancel ? (activeBooking?.timeSlot || null) : null
     };
-    
-    let startFromIndex = 0;
-    for (let i = 0; i < history.length; i++) {
-      if (history[i].sessionReset) {
-        startFromIndex = i + 1;
-      }
+
+    // Load active transient state directly from bookingDraft JSON Column
+    if (conversation && conversation.bookingDraft) {
+      currentState = {
+        ...currentState,
+        ...(conversation.bookingDraft as any)
+      };
     }
 
-    for (let i = startFromIndex; i < history.length; i++) {
-      const msg = history[i];
-      if (msg.role === "assistant" && msg.bookingData) {
-        for (const key of Object.keys(msg.bookingData)) {
-          const val = sanitizeAIValue(msg.bookingData[key as keyof typeof msg.bookingData]);
-          if (val) {
-            currentState[key] = val;
-          }
-        }
-      }
-    }
-
-    // Always ensure persistent name is maintained if known
-    if (persistentClientName && !currentState.clientName) {
-      currentState.clientName = persistentClientName;
-    }
-
-    // If it's a modification/cancellation request, ensure database state overrides history
+    // If it's a modification/cancellation request, ensure database state overrides draft
     if (isModificationOrCancel && activeBooking) {
       currentState.clientName = activeBooking.clientName;
       currentState.clientPhone = activeBooking.clientPhone;
@@ -386,6 +362,9 @@ export class ConversationEngine {
     const MAX_DB_MESSAGES = 50;
     const historyToSave = history.length > MAX_DB_MESSAGES ? history.slice(-MAX_DB_MESSAGES) : history;
 
+    const draftToSave = (bookingCreated || bookingModified) ? null : modifiedBookingData;
+    const clientNameNew = modifiedBookingData?.clientName || currentState.clientName || conversation?.clientName || null;
+
     await prisma.conversation.upsert({
       where: {
         clinicId_clientPhone: {
@@ -396,12 +375,16 @@ export class ConversationEngine {
       update: {
         messages: historyToSave as unknown as Prisma.InputJsonValue,
         humanTakeover: aiResult.humanTakeover ? true : undefined,
+        bookingDraft: draftToSave as unknown as Prisma.InputJsonValue,
+        clientName: clientNameNew,
       },
       create: {
         clientPhone,
         clinicId: clinic.id,
         messages: historyToSave as unknown as Prisma.InputJsonValue,
         humanTakeover: aiResult.humanTakeover ? true : false,
+        bookingDraft: draftToSave as unknown as Prisma.InputJsonValue,
+        clientName: clientNameNew,
       },
     });
 

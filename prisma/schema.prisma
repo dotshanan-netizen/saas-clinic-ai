@@ -203,14 +203,17 @@ model Booking {
 }
 
 model Conversation {
-  id            String   @id @default(cuid())
-  clientPhone   String
-  messages      Json
-  clinicId      String
-  updatedAt     DateTime @updatedAt
-  createdAt     DateTime @default(now())
-  humanTakeover Boolean  @default(false)
-  clinic        Clinic   @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  id               String   @id @default(cuid())
+  clientPhone      String
+  messages         Json
+  clinicId         String
+  updatedAt        DateTime @updatedAt
+  createdAt        DateTime @default(now())
+  humanTakeover    Boolean  @default(false)
+  bookingDraft     Json?    // Nullable draft state
+  clientName       String?  // Persistent customer profile name
+  currentStateName String   @default("IDLE") // Persisted FSM State
+  clinic           Clinic   @relation(fields: [clinicId], references: [id], onDelete: Cascade)
 
   @@unique([clinicId, clientPhone])
   @@index([clinicId])
