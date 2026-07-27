@@ -147,7 +147,7 @@ export class TimeNormalizer {
     }
 
     // Extract Time (Hour and optionally Minute) from timeSearchText
-    const timeRegex = /(?<!\(\s*|من\s*)([0-1]?[0-9])(?:[:.]([0-5][0-9]))?/;
+    const timeRegex = /(?<!\(\s*|من\s*)([0-2]?[0-9])(?:[:.]([0-5][0-9]))?/;
     const timeMatch = timeSearchText.match(timeRegex);
 
     // If no time is found, and we matched a date, return null so we ask for the time.

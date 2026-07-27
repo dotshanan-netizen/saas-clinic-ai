@@ -59,15 +59,12 @@ describe("Phase A — TimeNormalizer Basic Formats", () => {
     expect(result).toContain("م");
   });
 
-  it("[A-TN-06] should document how '23:00' (24h) is parsed — NOTE: regex matches hour=2 not 23", () => {
+  it("[A-TN-06] should parse '23:00' (24h) as 11 PM — B1 fixed: regex now supports 20-23", () => {
     const result = TimeNormalizer.normalize("23:00");
-    // ⚠️ BUG: The timeRegex /(?<!...)([0-1]?[0-9])(?:[:.]([0-5][0-9]))?/
-    // matches only hours 0-19. Hour 23 → regex captures "2" (only units digit).
-    // Result: hour=2, isPM heuristic kicks in → "02:00 م" (WRONG, should be 23:00 → 11:00 م)
+    // B1 FIX: Changed [0-1]? → [0-2]? so regex captures "23" instead of "2".
+    // 23 → 23%12=11, rawHour=23≥13 → isPM → "11:00 م"
     expect(result).not.toBeNull();
-    expect(result).toContain("02:00 م");
-    // This is a documented limitation: the regex cannot parse 24h hours 20-23.
-    // Impact: if AI outputs 24h format with hours 20-23, the time is corrupted.
+    expect(result).toContain("11:00 م");
   });
 
   it("[A-TN-07] should parse '11:00 AM' (English) correctly", () => {
