@@ -334,8 +334,30 @@ export class BusinessEngine {
       }));
       // ─────────────────────────────────────────────────────────────────────
 
+      if (!modifiedBookingData) {
+        modifiedBookingData = {
+          clientName: null,
+          clientPhone: null,
+          serviceName: null,
+          doctorName: null,
+          branchName: null,
+          timeSlot: null,
+        };
+      }
+
       // Execute Central Validation Gate
       const validation = validateBookingData(sanitizedData, clientPhone, clinic, currentState.timeSlot);
+
+      // Normalize fields back to modifiedBookingData for downstream persistence and state tracking
+      if (modifiedBookingData) {
+        if (validation.normalizedPhone) modifiedBookingData.clientPhone = validation.normalizedPhone;
+        if (validation.normalizedService) modifiedBookingData.serviceName = validation.normalizedService;
+        if (validation.normalizedBranch) modifiedBookingData.branchName = validation.normalizedBranch;
+        if (validation.cleanTimeSlot) modifiedBookingData.timeSlot = validation.cleanTimeSlot;
+        if (validation.normalizedDoctor && (validation.normalizedDoctor !== "أي طبيب" || extractedDoctor === "أي طبيب")) {
+          modifiedBookingData.doctorName = validation.normalizedDoctor;
+        }
+      }
 
       console.log(JSON.stringify({
         stage: "VALIDATION_RESULT",

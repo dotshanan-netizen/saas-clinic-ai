@@ -118,8 +118,8 @@ ${doctorsMappingStr}
 ${availableSlotsText ? `\n--- الأوقات المتاحة فعلياً للطبيب المحدد ---\n${availableSlotsText}\nاعتمدي حصراً على هذه الأوقات ولا تقترحي أوقاتاً من خارجها.\n` : ""}
 
 التعليمات الفنية لعملك كمحرك ذكاء اصطناعي آمن:
-- إذا كان طلب المستخدم هو حجز موعد (مثل: "أبغى أحجز"، "احجز لي"، "أريد الحجز"، "عاوزة احجز"، "أبي موعد"، "أحتاج موعد"، "أبغى موعد"، "حجز"، إلخ)، يجب أن تكون النية دائماً "BookAppointment"، حتى لو كانت بعض البيانات ناقصة.
-- تنبيه هام: لا تجعلي النية أبداً "Unknown" عندما يطلب العميل حجز موعد بأي صيغة مشابهة — أي جملة تحتوي على كلمة "حجز" أو "موعد" أو "احجز" تعبر عن طلب حجز ما لم تكن صراحةً إلغاء أو تعديل.
+- إذا كان طلب المستخدم هو حجز موعد (مثل: "أبغى أحجز"، "احجز لي"، "أريد الحجز"، "عاوزة احجز"، "أبي موعد"، "أحتاج موعد"، "أبغى موعد"، "حجز"، إلخ)، أو كان العميل يستكمل معك بيانات الحجز بالرد على أسئلتك (مثل تقديم الخدمة، الطبيب، الفرع، الاسم، أو الموعد)، فيجب تصنيف النية دائماً كـ "BookAppointment" لمتابعة وتجميع البيانات.
+- تنبيه هام: لا تجعلي النية أبداً "Unknown" أو "Inquiry" عندما يذكر العميل أي معلومة تخص الحجز (كالخدمة أو الفرع أو الموعد) طالما بدأت عملية الحجز.
 - لإنشاء حجز (BookAppointment)، يجب أن تجمعي 5 بيانات أساسية: (الاسم، الخدمة، الطبيب، الفرع، الوقت).
 - لا تقومي أبداً بتأكيد الحجز أو إخبار المستخدم بأنه "تم الحجز" إلا إذا اكتملت جميع البيانات الخمسة. إذا كانت هناك بيانات ناقصة، اجعلي النية "BookAppointment" واستمري في سؤال المستخدم عنها بلطف ضمن حقل "response".
 - اقترحي دائماً أوقاتاً متاحة وحقيقية من قائمة "الأوقات المتاحة فعلياً". إذا لم يذكر العميل طبيباً بعد، اطلبي منه اختيار الطبيب.
@@ -184,6 +184,7 @@ ${availableSlotsText ? `\n--- الأوقات المتاحة فعلياً للط�
         }
         
         const data = await response.json();
+        console.log("[DEBUG Gemini response]:", JSON.stringify(data, null, 2));
         rawJson = data.candidates[0].content.parts[0].text;
         if (data.usageMetadata) {
           usage = {
@@ -195,7 +196,8 @@ ${availableSlotsText ? `\n--- الأوقات المتاحة فعلياً للط�
       } else {
         throw new Error("No Gemini key");
       }
-    } catch {
+    } catch (err: any) {
+      console.error("[Gemini Fetch Failed, falling back to OpenAI]:", err.message || err);
       // Fallback to OpenAI if Gemini fails
       const apiUrl = "https://api.openai.com/v1/chat/completions";
       const response = await fetch(apiUrl, {
@@ -215,18 +217,24 @@ ${availableSlotsText ? `\n--- الأوقات المتاحة فعلياً للط�
         }),
       });
 
-      if (!response.ok) {
-        throw new Error(`AI API Error: ${await response.text()}`);
-      }
+      try {
+        if (!response.ok) {
+          throw new Error(`AI API Error: ${await response.text()}`);
+        }
 
-      const data = await response.json();
-      rawJson = data.choices[0].message.content;
-      if (data.usage) {
-        usage = {
-          promptTokens: data.usage.prompt_tokens || 0,
-          completionTokens: data.usage.completion_tokens || 0,
-          totalTokens: data.usage.total_tokens || 0
-        };
+        const data = await response.json();
+        console.log("[DEBUG OpenAI response]:", JSON.stringify(data, null, 2));
+        rawJson = data.choices[0].message.content;
+        if (data.usage) {
+          usage = {
+            promptTokens: data.usage.prompt_tokens || 0,
+            completionTokens: data.usage.completion_tokens || 0,
+            totalTokens: data.usage.total_tokens || 0
+          };
+        }
+      } catch (openAiErr: any) {
+        console.error("[OpenAI Fallback Also Failed]:", openAiErr.message || openAiErr);
+        throw openAiErr;
       }
     }
 
