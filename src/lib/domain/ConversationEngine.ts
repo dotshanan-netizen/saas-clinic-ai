@@ -77,6 +77,37 @@ export function determineDraftToSave(
   return modifiedBookingData;
 }
 
+/**
+ * Filter conversation history to the active session only.
+ *
+ * Scans backward from the end of `history` for the latest message with
+ * `sessionReset === true` (set on SESSION_TIMEOUT_RESET, INTENT_RESET,
+ * or a completed booking).  Every message AT and before that point
+ * belongs to a previous session and is discarded.
+ *
+ * Messages AFTER the last reset belong to the current active session
+ * and are returned.
+ *
+ * When no reset marker exists (`lastResetIndex` stays -1) the entire
+ * history is returned — there is no session boundary to enforce.
+ *
+ * This is the architectural guarantee that **the LLM context window
+ * never crosses a session boundary**, preventing transient booking
+ * entities (Doctor, Service, Branch, Time) from leaking across
+ * sessions while preserving the Customer Memory Policy (Name, Phone)
+ * which are maintained separately via `currentState` (not history).
+ */
+export function filterActiveHistory(history: ChatMessage[]): ChatMessage[] {
+  let lastResetIndex = -1;
+  for (let i = history.length - 1; i >= 0; i--) {
+    if (history[i].sessionReset) {
+      lastResetIndex = i;
+      break;
+    }
+  }
+  return history.slice(lastResetIndex + 1);
+}
+
 export class ConversationEngine {
   static async processMessage(
     clinic: ClinicWithCatalog,
@@ -303,15 +334,9 @@ export class ConversationEngine {
     Logger.info("Request received", { requestId, clinicId: clinic.id, clientPhone, userMessage: message, source });
 
     // 2. Classify Intent and Extract Data via AI
-    // Send only the active history (after the last sessionReset) to prevent state leakage
-    let lastResetIndex = -1;
-    for (let i = history.length - 1; i >= 0; i--) {
-      if (history[i].sessionReset) {
-        lastResetIndex = i;
-        break;
-      }
-    }
-    const activeHistory = history.slice(lastResetIndex + 1);
+    // Session-boundary filter: discard messages from previous sessions so the LLM
+    // never sees stale transient booking entities (Doctor, Service, Branch, Time).
+    const activeHistory = filterActiveHistory(history);
 
     // Apply MAX_CONTEXT_MESSAGES sliding window config
     const historyToModel = activeHistory.slice(-MAX_CONTEXT_MESSAGES);
