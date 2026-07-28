@@ -41,8 +41,13 @@ export async function GET(request: Request) {
         orderBy: { createdAt: "desc" },
       });
 
+      let filteredMessages: any[] = [];
+      if (conversation && Array.isArray(conversation.messages)) {
+        filteredMessages = (conversation.messages as Array<any>).filter((m) => m.role !== "system");
+      }
+
       return NextResponse.json({
-        messages: conversation ? conversation.messages : [],
+        messages: filteredMessages,
         booking: booking || null,
         humanTakeover: conversation ? conversation.humanTakeover : false,
       });
@@ -72,9 +77,13 @@ export async function GET(request: Request) {
 
       // Extract last message content from conversation history
       const messages = conv.messages as unknown as Array<{ role: string; content: string }> | null;
-      const lastMessage = messages && messages.length > 0
-        ? messages[messages.length - 1].content
-        : null;
+      let lastMessage = null;
+      if (messages && messages.length > 0) {
+        const filtered = messages.filter((m) => m.role !== "system");
+        if (filtered.length > 0) {
+          lastMessage = filtered[filtered.length - 1].content;
+        }
+      }
 
       return {
         id: conv.id,

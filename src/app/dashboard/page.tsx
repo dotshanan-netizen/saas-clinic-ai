@@ -14,7 +14,7 @@ interface ConversationItem {
 }
 
 interface ChatMessage {
-  role: "user" | "assistant";
+  role: "user" | "assistant" | "system";
   content: string;
   timestamp?: string;
 }
@@ -414,7 +414,9 @@ export default function Dashboard() {
             ) : selectedMessages.length === 0 ? (
               <div className="h-full flex items-center justify-center text-xs text-zinc-650">لا توجد رسائل مسجلة.</div>
             ) : (
-              selectedMessages.map((msg, idx) => (
+              selectedMessages.map((msg, idx) => {
+                if (msg.role === "system") return null;
+                return (
                 <div 
                   key={idx} 
                   className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
@@ -434,7 +436,7 @@ export default function Dashboard() {
                     )}
                   </div>
                 </div>
-              ))
+              )})
             )}
           </div>
 
