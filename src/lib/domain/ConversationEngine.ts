@@ -219,7 +219,7 @@ export class ConversationEngine {
       const existingUserMsgIndex = history.findIndex(msg => msg.messageId === requestId);
       if (existingUserMsgIndex !== -1) {
         Logger.info(`[ConversationEngine] Deduplicated repeated messageId: ${requestId}`, { requestId, clinicId: clinic.id, clientPhone });
-        let recoveredResponse = "عذراً، تم استلام رسالتك مسبقاً وهي قيد المعالجة. 🌸";
+        let recoveredResponse = "وصلتني رسالتكِ وهي قيد المعالجة — لحظة 🌷";
         if (existingUserMsgIndex + 1 < history.length && history[existingUserMsgIndex + 1].role === "assistant") {
           recoveredResponse = history[existingUserMsgIndex + 1].content;
         }
@@ -467,7 +467,7 @@ export class ConversationEngine {
         errorCode: error.code || "AI_FAILURE"
       });
 
-      finalResponse = "عذراً، أواجه مشكلة تقنية حالياً. سيقوم فريق الاستقبال بالرد عليك قريباً. 🌸";
+      finalResponse = "سأحولكِ لأحد فريق الاستقبال يتواصل معكِ في أقرب وقت 🌸";
       aiResult = {
         intent: "HumanTakeover",
         response: finalResponse,

@@ -456,7 +456,7 @@ export class BusinessEngine {
               ? "getAvailableSlots returned ZERO slots. Check AVAILABLE_SLOTS_EMPTY event from BookingService for root cause (doctor not found, no schedules, or all closed)."
               : "Slots were generated but the requested time did not match any. The slot format may differ or the time may genuinely be outside working hours.",
           }));
-          finalResponse = `عذراً، الوقت الذي اخترته (${validation.cleanTimeSlot}) لم يعد متاحاً. أرجو اختيار وقت آخر من الأوقات المتاحة. 🌷`;
+          finalResponse = `الوقت (${validation.cleanTimeSlot}) محجوز للأسف. شوفي الأوقات المتاحة أعلاه وحددي اللي يناسبكِ 🌷`;
           // Clear the unavailable timeSlot from state so the conversation
           // does NOT trap: on the next user message, currentState.timeSlot
           // will be null, allowing the system to prompt for a new time.
@@ -521,7 +521,7 @@ export class BusinessEngine {
             },
           });
           bookingModified = true;
-          finalResponse = `وصلني تعديل الحجز بنجاح 🌷\n\n✅ الاسم: ${validation.cleanName}\n✅ الجوال: ${finalPhone}\n✅ الخدمة: ${validation.normalizedService}\n✅ الطبيب: ${finalDoctorName}\n✅ الفرع: ${validation.normalizedBranch}\n✅ الوقت المفضل: ${validation.cleanTimeSlot}\n\nتم تحديث موعدك، وسيتواصل معك موظف الاستقبال للتأكيد النهائي. 🌸`;
+          finalResponse = `وصلني التعديل 🌷\n\n✅ الاسم: ${validation.cleanName}\n✅ الجوال: ${finalPhone}\n✅ الخدمة: ${validation.normalizedService}\n✅ الطبيب: ${finalDoctorName}\n✅ الفرع: ${validation.normalizedBranch}\n✅ الوقت: ${validation.cleanTimeSlot}\n\nسيتواصل معكِ الاستقبال لتأكيد التعديل. 🌸`;
         } else {
           // Check for duplicates
           const existingBooking = await prisma.booking.findFirst({
@@ -608,7 +608,7 @@ export class BusinessEngine {
                 contactNote = `\n\nسأتواصل مع ${relation} على نفس رقم الواتساب الحالي، وإذا كنت تفضل رقماً آخر للتواصل، أرجو تزويدي به 🌷`;
               }
 
-              finalResponse = `وصلني طلب الحجز بنجاح 🌷\n\n✅ الاسم: ${validation.cleanName}\n✅ الجوال: ${finalPhone}\n✅ الخدمة: ${validation.normalizedService}\n✅ الطبيب: ${finalDoctorName}\n✅ الفرع: ${validation.normalizedBranch}\n✅ الوقت المفضل: ${validation.cleanTimeSlot}\n\nتم إرسال طلبك لموظف الاستقبال، وسيتواصل معك لتأكيد الموعد النهائي حسب التوفر. 🌸${contactNote}`;
+              finalResponse = `وصلني طلب الحجز 🌷\n\n✅ الاسم: ${validation.cleanName}\n✅ الجوال: ${finalPhone}\n✅ الخدمة: ${validation.normalizedService}\n✅ الطبيب: ${finalDoctorName}\n✅ الفرع: ${validation.normalizedBranch}\n✅ الوقت: ${validation.cleanTimeSlot}\n\nسيتواصل معكِ الاستقبال لتأكيد الموعد. 🌸${contactNote}`;
             } catch (err: any) {
               if (err.message === "DOUBLE_BOOKING" || err.code === "P2034") {
                 trace.stages.businessDecision = {
@@ -616,7 +616,7 @@ export class BusinessEngine {
                   reason: "DB_CONCURRENCY_CONFLICT",
                   missingFields: ["الوقت المناسب"],
                 };
-                finalResponse = `عذراً، الوقت الذي اخترته (${validation.cleanTimeSlot}) تم حجزه للتو من قبل مراجع آخر. أرجو اختيار وقت آخر من الأوقات المتاحة. 🌷`;
+                finalResponse = `الوقت (${validation.cleanTimeSlot}) أُخذ للتو. اختاري وقتاً ثانياً من المتاح 🌷`;
                 if (modifiedBookingData) {
                   modifiedBookingData.timeSlot = null;
                 }
@@ -629,7 +629,7 @@ export class BusinessEngine {
               throw err;
             }
           } else {
-            finalResponse = `لدينا طلب حجز مُسجّل مسبقاً بنفس التفاصيل يا ${validation.cleanName} 🌷 تم إرسال طلبك بالفعل للاستقبال. إذا أردت إنشاء طلب جديد أو تعديل الحجز، أخبرني وسأبدأ معك طلبًا جديدًا.`;
+            finalResponse = `يا ${validation.cleanName}، عندنا طلب بنفس التفاصيل مُسجّل لكِ 🌷 إذا تبين تعدّلين أو تضيفين شيئاً، قوليلي.`;
           }
         }
       } else {
@@ -652,7 +652,7 @@ export class BusinessEngine {
         const isHallucinatedSuccess = finalResponse.match(/تم|نجاح|ارسال|رفع|وصلني|حجز/i);
 
         if (sanitizedData.clientPhone && !validation.normalizedPhone && !validation.phoneRestricted) {
-          finalResponse = "رقم الجوال يبدو غير صحيح. أرجو تزويدنا برقم تواصل صحيح بالصيغة الدولية أو المحلية 🌷";
+          finalResponse = "الرقم ما وصلني صح. ممكن تعيدين كتابته؟ (مثال: 0501234567) 🌷";
         } else if (isHallucinatedSuccess || validation.missingFields.length > 0) {
           // Define priority order for prompting
           const order = ["الاسم", "رقم الجوال", "الخدمة المطلوبة", "الفرع المفضل", "الطبيب المفضل", "الوقت المناسب"];
@@ -669,21 +669,21 @@ export class BusinessEngine {
           }
 
           if (nextField === "الاسم") {
-            finalResponse = "تسعدنا خدمتكِ يا قلبي! 🌸 ممكن تفيديني باسمكِ الكريم للتسجيل؟";
+            finalResponse = "باسمكِ الكريم؟ 🌸";
           } else if (nextField === "رقم الجوال") {
-            finalResponse = "يا هلا بكِ! 🌸 ممكن رقم الجوال للتواصل وتأكيد الحجز؟";
+            finalResponse = "ممكن رقم الجوال للتواصل؟ 🌷";
           } else if (nextField.startsWith("رقم جوال للتواصل من")) {
-            finalResponse = `الرجاء تزويدنا برقم تواصل صحيح من إحدى الدول المدعومة 🌷`;
+            finalResponse = `أحتاج رقم تواصل من إحدى الدول المدعومة 🌷`;
           } else if (nextField === "الخدمة المطلوبة") {
-            finalResponse = "يا هلا بكِ في عيادة ريفال! 🌸 وش الخدمة أو الجلسة اللي حابة تحجزيها اليوم؟ (مثل البوتكس، الفيلر، تنظيف البشرة أو ليزر)";
+            finalResponse = "وش الخدمة اللي تبين تحجزين؟ (مثل بوتكس، فيلر، تنظيف بشرة، ليزر) 🌷";
           } else if (nextField === "الفرع المفضل") {
-            finalResponse = "من عيوني! 🌸 في أي فرع تفضلين الحجز؟ عندنا فرع الصحافة وفرع التحلية بالرياض.";
+            finalResponse = "أي فرع يناسبكِ — الصحافة أو التحلية؟ 🌷";
           } else if (nextField === "الطبيب المفضل") {
-            finalResponse = "أبشري من عيوني! 🌸 هل تفضلين طبيبة/أخصائية معينة للجلسة أم تبحثين عن أول موعد متاح مع أي طبيب؟";
+            finalResponse = "تفضلين طبيبة معينة أو أي موعد متاح؟ 🌷";
           } else if (nextField === "الوقت المناسب") {
-            finalResponse = "تمام يا قلبي! 🌸 تحبين موعدكِ يكون في أي يوم؟ وأي وقت يناسبكِ (صباحي أم مسائي)؟";
+            finalResponse = "أي يوم ووقت يناسبكِ؟ 🌷";
           } else {
-            finalResponse = `عذراً، حتى أتمكن من تأكيد الحجز، لا يزال ينقصنا معرفة: ${nextField} 🌷`;
+            finalResponse = `بقي علينا معرفة: ${nextField} 🌷`;
           }
         }
 
@@ -717,14 +717,14 @@ export class BusinessEngine {
           data: { status: "CANCELLED" },
         });
         bookingModified = true;
-        finalResponse = `تم إلغاء حجزك بنجاح يا ${activeBooking.clientName} 🌷 تم إخطار الاستقبال بالإلغاء.`;
+        finalResponse = `تم إلغاء الحجز يا ${activeBooking.clientName} 🌷 الاستقبال عنده علم. إذا احتجتِ شيء آخر أنا هنا.`;
       } else {
         const hasDraft = currentState && (currentState.serviceName || currentState.branchName || currentState.timeSlot || currentState.clientName);
         if (hasDraft) {
           bookingModified = true;
-          finalResponse = "تم إلغاء طلب الحجز وإعادة تعيين الجلسة بنجاح 🌷 إذا كنت ترغب في البدء من جديد، أنا هنا لمساعدتك.";
+          finalResponse = "تم إلغاء الطلب 🌷 إذا تبين تحجزين من جديد، أنا هنا.";
         } else {
-          finalResponse = "لا يوجد لديك حجز نشط حالياً لإلغائه 🌷 إذا كنت ترغب في حجز موعد جديد، أنا هنا لمساعدتك.";
+          finalResponse = "ما عندك حجز نشط حالياً 🌷 إذا أبيتِ موعد جديد، أخبريني.";
         }
       }
     } else if (resolvedIntent === "Inquiry") {
@@ -738,13 +738,13 @@ export class BusinessEngine {
         const { BookingService } = await import("./BookingService");
         const slotsData = await BookingService.getAvailableSlots(clinic.id, currentState.doctorName as string);
         if (Object.keys(slotsData).length === 0) {
-          finalResponse = `لا توجد أوقات متاحة حالياً مع ${currentState.doctorName} خلال الـ 30 يوماً القادمة. هل تودين اختيار تاريخ آخر؟ 🌷`;
+          finalResponse = `ما في مواعيد متاحة مع ${currentState.doctorName} خلال الفترة القادمة. تبين مع طبيبة ثانية؟ 🌷`;
         } else {
           const lines = Object.entries(slotsData).map(([day, times]) => {
             const cleanTimes = (times as string[]).map(t => t.replace(day, "").trim());
-            return `‫${day}: ${cleanTimes.join(" - ")}‪`;
+            return `${day}: ${cleanTimes.join(" - ")}`;
           });
-          finalResponse = `الأوقات المتاحة مع ${currentState.doctorName} 🌷:\n\n${lines.join("\n")}\n\nأي وقت يناسبكِ؟`;
+          finalResponse = `الأوقات المتاحة مع ${currentState.doctorName}:\n\n${lines.join("\n")}\n\nأيها يناسبكِ؟ 🌷`;
         }
       } else if (aiResult.requiresRag) {
         try {
@@ -762,7 +762,7 @@ export class BusinessEngine {
             || aiResult.response.includes("انتظر")
             || aiResult.response.includes("دعني");
           finalResponse = isPlaceholder
-            ? "عذراً، لم أتمكن من جلب المعلومات التفصيلية حالياً. يمكنكِ التواصل مباشرة مع الاستقبال للحصول على إجابة دقيقة، أو اسأليني عن شيء آخر وسأكون سعيدة بمساعدتكِ! 🌷"
+            ? "للإجابة الدقيقة على هذا السؤال، تواصلي مع الاستقبال مباشرة أو اتصلي بنا. أو اسأليني عن أي شيء ثاني وسأساعدكِ 🌷"
             : aiResult.response;
         }
       } else {
@@ -771,7 +771,7 @@ export class BusinessEngine {
     } else if (resolvedIntent === "HumanTakeover" || resolvedIntent === "Complaint") {
       const reason = resolvedIntent === "Complaint" ? "شكوى أو اعتراض من العميل" : "طلب تصعيد للموظف البشري";
       Logger.info(`[HumanTakeoverTriggered] Action required. Reason: ${reason}`, { clinicId: clinic.id, clientPhone, requestId: "unknown" });
-      finalResponse = "تم إيقاف الرد الآلي وتحويل محادثتك لموظف الاستقبال البشري فوراً لمساعدتك. سيقوم بالتواصل معك في أقرب وقت. 👩‍💻";
+      finalResponse = "فهمتكِ — سأحولكِ لأحد فريق الاستقبال الآن، سيتواصل معكِ قريباً 🌸";
       bookingCreated = false;
       bookingModified = false;
       aiResult.humanTakeover = true; // Ensure flag is set for backend
