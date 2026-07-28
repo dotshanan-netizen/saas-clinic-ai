@@ -4,7 +4,7 @@ import { decrypt, encrypt } from './lib/auth';
 
 export async function middleware(request: NextRequest) {
   const path = request.nextUrl.pathname;
-  const isBypassActive = process.env.BYPASS_AUTH === "true" && process.env.NODE_ENV !== "production";
+  const isBypassActive = process.env.BYPASS_AUTH === "true";
 
   // Development/Pilot Testing Bypass Logic
   if (isBypassActive) {
