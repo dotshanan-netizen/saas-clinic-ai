@@ -396,21 +396,14 @@ export class BusinessEngine {
         for (const slots of Object.values(availableSlots)) {
           for (const slot of slots) {
             const timeOnly = validation.cleanTimeSlot?.match(/\d{2}:\d{2}\s+[صم]/)?.[0];
-            const hourNumMatch = validation.cleanTimeSlot?.match(/(\d{1,2})/);
-            const userHour = hourNumMatch ? parseInt(hourNumMatch[1], 10) : null;
-
-            const slotHourMatch = slot.match(/(\d{1,2}):\d{2}\s+([صم])/);
-            const slotHour = slotHourMatch ? parseInt(slotHourMatch[1], 10) : null;
 
             const exactMatch = slot === validation.cleanTimeSlot;
             const endMatch = timeOnly && slot.endsWith(timeOnly);
             const includeMatch = validation.cleanTimeSlot && slot.includes(validation.cleanTimeSlot);
-            const hourMatch = userHour !== null && slotHour !== null && userHour === slotHour;
             
-            // 🚧 TIME_TRACE (Phase A)
-            if (exactMatch || endMatch || includeMatch || hourMatch) {
+            if (exactMatch || endMatch || includeMatch) {
               slotIsAvailable = true;
-              console.log(`[TIME_TRACE] SlotMatched: slot="${slot}" cleanTime="${validation.cleanTimeSlot}" timeOnly="${timeOnly}" userHour=${userHour} slotHour=${slotHour} exact=${exactMatch} end=${endMatch} include=${includeMatch} hour=${hourMatch}`);
+              console.log(`[TIME_TRACE] SlotMatched: slot="${slot}" cleanTime="${validation.cleanTimeSlot}" timeOnly="${timeOnly}" exact=${exactMatch} end=${endMatch} include=${includeMatch}`);
               validation.cleanTimeSlot = slot;
               // ARCHITECTURAL RULE: Availability Check does NOT modify
               // Conversation Memory. modifiedBookingData is preserved
@@ -418,10 +411,8 @@ export class BusinessEngine {
               console.log(JSON.stringify({
                 event: "DOUBLE_BOOKING_GUARD_MATCH",
                 slotMatched: slot,
-                matchType: exactMatch ? "exact" : endMatch ? "end" : includeMatch ? "include" : "hour",
+                matchType: exactMatch ? "exact" : endMatch ? "end" : "include",
                 requestedTime: timeOnly,
-                userHour,
-                slotHour,
               }));
               break;
             }
