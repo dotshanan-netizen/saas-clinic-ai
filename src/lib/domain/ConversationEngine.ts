@@ -10,6 +10,73 @@ import crypto from "crypto";
 
 const MAX_CONTEXT_MESSAGES = parseInt(process.env.MAX_CONTEXT_MESSAGES || "12", 10);
 
+// ── Booking Stage ───────────────────────────────────────────────────────────
+// Session-level state orthogonal to per-message intent.
+// Controls bookingDraft persistence lifecycle.
+export type BookingStage = "IDLE" | "COLLECTING" | "CONFIRMING" | "BOOKED";
+
+const NON_BOOKING_INTENTS_FOR_DRAFT = new Set([
+  "Inquiry",
+  "Complaint",
+  "Objection",
+  "Unknown",
+  "unknown",
+  "HumanTakeover",
+  "GeneralQuestion",
+  "Greeting"
+]);
+
+/**
+ * Infer the current BookingStage from the conversation's bookingDraft.
+ * Phase 1: no new DB column — stage is derived from draft presence/content.
+ * - No draft → IDLE (no active booking)
+ * - Draft with all key booking fields → CONFIRMING
+ * - Draft with partial data → COLLECTING
+ */
+export function inferBookingStage(bookingDraft: Record<string, unknown> | null | undefined): BookingStage {
+  if (!bookingDraft) return "IDLE";
+  const hasService = !!bookingDraft.serviceName;
+  const hasDoctor = !!bookingDraft.doctorName;
+  const hasTime = !!bookingDraft.timeSlot;
+  // Empty object or draft with only identity fields (no booking content) → IDLE
+  if (!hasService && !hasDoctor && !hasTime) return "IDLE";
+  if (hasService && hasDoctor && hasTime) return "CONFIRMING";
+  return "COLLECTING";
+}
+
+/**
+ * Determine what to persist as bookingDraft for this turn.
+ *
+ * Rules (per approved architecture):
+ *   booking completed/modified → null (clear)
+ *   timeout occurred           → null (clear)
+ *   active booking + non-booking intent → previousDraft (preserve)
+ *   otherwise                 → modifiedBookingData (normal write)
+ */
+export function determineDraftToSave(
+  intent: string | null | undefined,
+  timedOut: boolean,
+  bookingCreated: boolean,
+  bookingModified: boolean,
+  previousDraft: Record<string, unknown> | null | undefined,
+  modifiedBookingData: Record<string, unknown> | null | undefined
+): Record<string, unknown> | null | undefined {
+  if (timedOut) return null;
+  if (bookingCreated || bookingModified) return null;
+
+  // Infer stage from the PRE-EXISTING draft (before this turn's processing)
+  const stage = inferBookingStage(previousDraft);
+
+  // Active booking flow + non-booking message → preserve existing draft
+  if (stage !== "IDLE") {
+    const isNonBooking = !intent || NON_BOOKING_INTENTS_FOR_DRAFT.has(intent);
+    if (isNonBooking) return previousDraft;
+  }
+
+  // Default: write whatever the pipeline produced
+  return modifiedBookingData;
+}
+
 export class ConversationEngine {
   static async processMessage(
     clinic: ClinicWithCatalog,
@@ -76,13 +143,16 @@ export class ConversationEngine {
       const bookingDraftBefore = conversation?.bookingDraft ? JSON.parse(JSON.stringify(conversation.bookingDraft)) : null;
 
       let history: ChatMessage[] = [];
+      let timedOut = false;
       if (conversation && conversation.messages) {
         history = conversation.messages as unknown as ChatMessage[];
-      
-      // Phase 1: Check lastInteraction timeout (15 mins)
+
+      // Phase 1: Check lastInteraction timeout (30 mins)
+      const SESSION_TIMEOUT_MS = 30 * 60 * 1000;
       const lastInteraction = conversation.updatedAt.getTime();
       const now = Date.now();
-      if (now - lastInteraction > 15 * 60 * 1000) {
+      timedOut = now - lastInteraction > SESSION_TIMEOUT_MS;
+      if (timedOut) {
         history.push({
           role: "system",
           content: "SESSION_TIMEOUT_RESET",
@@ -431,7 +501,14 @@ export class ConversationEngine {
     const MAX_DB_MESSAGES = 50;
     const historyToSave = history.length > MAX_DB_MESSAGES ? history.slice(-MAX_DB_MESSAGES) : history;
 
-    const draftToSave = (bookingCreated || bookingModified) ? null : modifiedBookingData;
+    const draftToSave = determineDraftToSave(
+      aiResult.intent,
+      timedOut,
+      !!bookingCreated,
+      !!bookingModified,
+      bookingDraftBefore as Record<string, unknown> | null | undefined,
+      modifiedBookingData as Record<string, unknown> | null | undefined
+    );
     const clientNameNew = modifiedBookingData?.clientName || currentState.clientName || conversation?.clientName || null;
 
     await prisma.conversation.upsert({
