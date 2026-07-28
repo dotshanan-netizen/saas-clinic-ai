@@ -31,7 +31,6 @@ interface Booking {
 }
 
 export default function Dashboard() {
-  const clinicSlug = "rival-clinic";
   
   // State for Conversations (Patients list)
   const [conversations, setConversations] = useState<ConversationItem[]>([]);
@@ -65,7 +64,7 @@ export default function Dashboard() {
   const fetchConversations = async (silent = false) => {
     try {
       if (!silent) setLoadingConversations(true);
-      const res = await fetch(`/api/conversations?clinicSlug=${clinicSlug}`);
+      const res = await fetch(`/api/conversations`);
       if (res.status === 401) {
         window.location.assign("/login");
         return;
@@ -85,7 +84,7 @@ export default function Dashboard() {
   const fetchConversationDetails = async (phone: string, silent = false) => {
     try {
       if (!silent) setLoadingDetails(true);
-      const res = await fetch(`/api/conversations?clinicSlug=${clinicSlug}&clientPhone=${encodeURIComponent(phone)}`);
+      const res = await fetch(`/api/conversations?clientPhone=${encodeURIComponent(phone)}`);
       if (res.status === 401) {
         window.location.assign("/login");
         return;
