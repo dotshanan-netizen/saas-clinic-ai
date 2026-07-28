@@ -188,7 +188,7 @@ describe("Pilot Stabilization Sprint - Advanced Regression Suite (PF-001, PF-002
     );
 
     // Turn 1: Must report the slot is unavailable
-    expect(turn1Result.finalResponse).toContain("لم يعد متاحاً");
+    expect(turn1Result.finalResponse).toContain("محجوز للأسف");
     // Turn 1: modifiedBookingData must have timeSlot cleared so state doesn't trap
     expect(turn1Result.modifiedBookingData?.timeSlot).toBeNull();
 

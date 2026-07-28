@@ -109,7 +109,7 @@ describe("Booking State Lifecycle — Stale State Prevention", () => {
       bookingAI({ name: "فريال", service: "تنظيف بشرة", doctor: "د. سحر", branch: "فرع الاختبار", time: "الأحد (27 يوليو) 03:00 م" }),
       "WhatsApp"
     );
-    expect(turn1.finalResponse).toContain("لم يعد متاحاً");
+    expect(turn1.finalResponse).toContain("محجوز للأسف");
     // PF-005: timeSlot cleared
     expect(turn1.modifiedBookingData?.timeSlot).toBeNull();
     // Other fields preserved in modifiedBookingData (this is the state handed to next turn)
@@ -125,7 +125,7 @@ describe("Booking State Lifecycle — Stale State Prevention", () => {
     );
 
     // The greeting must NOT inherit stale booking state
-    expect(turn2.finalResponse).not.toContain("لم يعد متاحاً");
+    expect(turn2.finalResponse).not.toContain("محجوز للأسف");
     expect(turn2.resolvedIntent).toBe("Inquiry");
     // Booking-specific fields must be null in modifiedBookingData
     expect(turn2.modifiedBookingData?.serviceName).toBeNull();
@@ -272,7 +272,7 @@ describe("Booking State Lifecycle — Stale State Prevention", () => {
       bookingAI({ name: "فريال", service: "تنظيف بشرة", doctor: "د. سحر", branch: "فرع الاختبار", time: "الإثنين (27 يوليو) 03:00 م" }),
       "WhatsApp"
     );
-    expect(turn1.finalResponse).toContain("لم يعد متاحاً");
+    expect(turn1.finalResponse).toContain("محجوز للأسف");
     expect(turn1.modifiedBookingData?.timeSlot).toBeNull();
     // Other context preserved for continuation
     expect(turn1.modifiedBookingData?.serviceName).toBe("تنظيف بشرة");

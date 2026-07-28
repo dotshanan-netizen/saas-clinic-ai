@@ -463,7 +463,7 @@ describe("Golden Regression Suite (G001–G010)", () => {
     // Booking must NOT be created
     expect(result.bookingCreated).toBe(false);
     // Response must be the graceful double-booking/race-condition message
-    expect(result.finalResponse).toContain("تم حجزه للتو");
+    expect(result.finalResponse).toContain("أُخذ للتو");
     // No crash
     expect(result.finalResponse).toBeTruthy();
   });

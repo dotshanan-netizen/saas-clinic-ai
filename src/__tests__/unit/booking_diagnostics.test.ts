@@ -82,7 +82,7 @@ describe("Booking Diagnostics — Empty Slots Logging", () => {
 
     // Behavioral contract: slot rejected
     expect(result.bookingCreated).toBe(false);
-    expect(result.finalResponse).toContain("لم يعد متاحاً");
+    expect(result.finalResponse).toContain("محجوز للأسف");
 
     // PF-005: timeSlot cleared from state
     expect(result.modifiedBookingData?.timeSlot).toBeNull();
@@ -133,7 +133,7 @@ describe("Booking Diagnostics — Empty Slots Logging", () => {
       "WhatsApp"
     );
 
-    expect(turn1.finalResponse).toContain("لم يعد متاحاً");
+    expect(turn1.finalResponse).toContain("محجوز للأسف");
     expect(turn1.modifiedBookingData?.timeSlot).toBeNull();
 
     // ─── Turn 2: Greeting → must NOT repeat the unavailable-slot message ──
