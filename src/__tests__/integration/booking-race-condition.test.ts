@@ -14,7 +14,8 @@ describe("Booking Race Condition - Concurrent Slot Reservation", () => {
 
   beforeAll(async () => {
     // Setup: Create test clinic with doctor
-    clinicId = "cmryoendy0000dzrctyxgyf3k"; // Test clinic
+    const dbClinic = await prisma.clinic.findUnique({ where: { slug: "rival-clinic" } });
+    clinicId = dbClinic ? dbClinic.id : "cmryoendy0000dzrctyxgyf3k";
     doctorName = "د. سحر";
 
     // Dynamically retrieve the first available slot to avoid hardcoded date expiry
