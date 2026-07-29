@@ -95,14 +95,17 @@ export async function POST(request: Request) {
       const phoneNumberId = value.metadata?.phone_number_id;
       const wamid = message.id;
 
-      console.log({
-        event: "WHATSAPP_MESSAGE_PARSED",
-        timestamp: new Date().toISOString(),
+      // ── STAGE 1: Webhook received ─────────────────────────────────────────
+      console.log(JSON.stringify({
+        RUNTIME_EVIDENCE: true,
+        stage: "WEBHOOK_RECEIVED",
+        status: "OK",
         phoneNumberId,
         wamid,
         from,
-        messageType
-      });
+        messageType,
+        timestamp: new Date().toISOString()
+      }));
 
       // Idempotency check
       wamidToDelete = wamid;
@@ -134,7 +137,7 @@ export async function POST(request: Request) {
           if (parts.length === 3) {
             const [iv, authTag, encryptedData] = parts;
             const decryptedToken = decrypt(encryptedData, iv, authTag);
-            const politeResponse = "عذراً، لا أستطيع معالجة الصور، الصوتيات أو الملفات حالياً. يرجى كتابة طلبك كرسالة نصية وسأقوم بمساعدتك فوراً! 🌸";
+            const politeResponse = "عذراً، النظام لا يدعم استقبال الصور أو الصوتيات حالياً. الرجاء إرسال النص فقط.";
             await ConnectionManager.withFetchResilience(
               `https://graph.facebook.com/v18.0/${clinicForMedia.whatsappPhoneId}/messages`,
               {
@@ -209,9 +212,30 @@ export async function POST(request: Request) {
         });
 
         if (!clinic) {
+          // ── STAGE 2 FAIL: Clinic not found ───────────────────────────────
+          console.log(JSON.stringify({
+            RUNTIME_EVIDENCE: true,
+            stage: "CLINIC_LOOKUP",
+            status: "FAIL",
+            phoneNumberId,
+            error: "No clinic matched this phone_number_id",
+            timestamp: new Date().toISOString()
+          }));
           console.error(`Clinic not found: ${phoneNumberId}`);
           return new Response("Clinic not found", { status: 404 });
         }
+
+        // ── STAGE 2: Clinic resolved ──────────────────────────────────────
+        console.log(JSON.stringify({
+          RUNTIME_EVIDENCE: true,
+          stage: "CLINIC_LOOKUP",
+          status: "OK",
+          clinicId: clinic.id,
+          clinicSlug: clinic.slug,
+          isAiActive: clinic.isAiActive,
+          hasToken: !!clinic.whatsappToken,
+          timestamp: new Date().toISOString()
+        }));
 
         if (!clinic.isAiActive) {
           console.log(`[Webhook] AI is disabled for clinic ${phoneNumberId}, skipping.`);
@@ -220,6 +244,7 @@ export async function POST(request: Request) {
 
         // 2. Process via ConversationEngine
         const { ConversationEngine } = await import("@/lib/domain/ConversationEngine");
+        const ceStart = Date.now();
         const finalResponse = await ConversationEngine.processMessage(
           clinic as unknown as import("@/lib/domain/types").ClinicWithCatalog,
           clientPhone,
@@ -227,6 +252,18 @@ export async function POST(request: Request) {
           "WhatsApp",
           wamid
         );
+
+        // ── STAGE 3: ConversationEngine + LLM ────────────────────────────
+        console.log(JSON.stringify({
+          RUNTIME_EVIDENCE: true,
+          stage: "LLM_INVOKED",
+          status: finalResponse.response ? "OK" : "FAIL",
+          conversationId: finalResponse.conversationId ?? null,
+          intent: finalResponse.intent ?? null,
+          responseLength: finalResponse.response?.length ?? 0,
+          latencyMs: Date.now() - ceStart,
+          timestamp: new Date().toISOString()
+        }));
 
         // 3. Decrypt Token and Reply to Meta
         const storedToken = clinic.whatsappToken;
@@ -259,10 +296,23 @@ export async function POST(request: Request) {
               "Meta WhatsApp API"
             );
 
+            const metaBody = await metaResponse.text();
+            let metaMessageId: string | null = null;
+            try { metaMessageId = JSON.parse(metaBody)?.messages?.[0]?.id ?? null; } catch { /* ignore */ }
+
+            // ── STAGE 4: WhatsApp Cloud API send ─────────────────────────
+            console.log(JSON.stringify({
+              RUNTIME_EVIDENCE: true,
+              stage: "WHATSAPP_SEND",
+              status: metaResponse.ok ? "OK" : "FAIL",
+              httpStatus: metaResponse.status,
+              metaMessageId,
+              to: clientPhone,
+              timestamp: new Date().toISOString()
+            }));
+
             if (!metaResponse.ok) {
-              console.error(`Meta API error: ${await metaResponse.text()}`);
-            } else {
-              console.log(`[Webhook] Successfully replied to ${clientPhone} via Meta API.`);
+              console.error(`Meta API error: ${metaBody}`);
             }
           }
         }

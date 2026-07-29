@@ -111,6 +111,62 @@ test.describe("Meta WhatsApp Webhook API Tests", () => {
   });
 
   // POST Message Handling Tests
+  // Media message types to test for BUG-007
+  const mediaTypes = [
+    { type: "image", field: "image", data: { id: "MEDIA_ID_IMAGE_001", mime_type: "image/jpeg", sha256: "abcdef1234567890" } },
+    { type: "audio", field: "audio", data: { id: "MEDIA_ID_AUDIO_001", mime_type: "audio/ogg" } },
+    { type: "document", field: "document", data: { id: "MEDIA_ID_DOC_001", mime_type: "application/pdf", sha256: "docsha256abcdef" } },
+  ];
+
+  for (const media of mediaTypes) {
+    test(`should handle ${media.type} message and return 200`, async ({ request }) => {
+      const mediaPayload = {
+        object: "whatsapp_business_account",
+        entry: [
+          {
+            id: "WABA_ID_TEST",
+            changes: [
+              {
+                field: "messages",
+                value: {
+                  messaging_product: "whatsapp",
+                  metadata: {
+                    display_phone_number: "966555555555",
+                    phone_number_id: "123456789_TEST_PHONE_ID"
+                  },
+                  contacts: [
+                    {
+                      profile: { name: "Test User" },
+                      wa_id: testPhone
+                    }
+                  ],
+                  messages: [
+                    {
+                      from: testPhone,
+                      id: `MEDIA_${media.type.toUpperCase()}_${Math.floor(Math.random() * 1000000)}`,
+                      timestamp: "1672531199",
+                      type: media.type,
+                      [media.field]: media.data
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      };
+
+      const response = await request.post("/api/webhook/whatsapp", { data: mediaPayload });
+
+      // The webhook returns 200 for media messages (it handles them before any Meta API call)
+      // In test environments where Meta is unreachable, the withFetchResilience call may fail,
+      // but the handler still returns 200 because the response is sent before the Meta API throw.
+      expect(response.status()).toBe(200);
+      const bodyText = await response.text();
+      expect(bodyText).toContain("Success");
+    });
+  }
+
   test("should receive incoming message, create conversation in DB, and log messages", async ({ request }) => {
     const payload = {
       object: "whatsapp_business_account",
