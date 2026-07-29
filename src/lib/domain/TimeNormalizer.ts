@@ -138,16 +138,12 @@ export class TimeNormalizer {
    * Example: "12 أغسطس الساعة 10 ص" -> "الأربعاء (12 أغسطس) 10:00 ص"
    */
   static normalize(raw: string | null, previousTimeSlot?: string | null, countryCode: string = "SA"): string | null {
-    // 🚧 TIME_TRACE (Phase A — يزال بعد انتهاء التحقيق)
-    const _traceInput = raw;
     if (!raw) return null;
     let text = raw.trim();
     if (!text) return null;
 
     // 00. Strict Idempotency Check: if it already matches the canonical output format, return it as is.
     if (this.isNormalized(text)) {
-      // 🚧 TIME_TRACE (Phase A)
-      console.log(`[TIME_TRACE] TimeNormalizer.idempotent: "${_traceInput}" → "${text}"`);
       return text;
     }
 
@@ -314,10 +310,6 @@ export class TimeNormalizer {
         normalized = `${datePartMatch[1]} ${normalized}`;
       }
     }
-
-    // 🚧 TIME_TRACE (Phase A — يزال بعد انتهاء التحقيق)
-    const _traceHour = parseInt((_traceInput || "").match(/\d{1,2}/)?.[0] || "0", 10);
-    console.log(`[TIME_TRACE] TimeNormalizer: "${_traceInput}" → hour=${_traceHour} parsedH=${hour} parsedM=${minute} isPM=${isPM} isAM=${isAM} → "${normalized}"`);
 
     return normalized;
   }

@@ -109,9 +109,6 @@ export class BookingService {
     });
     const countryCode = clinic?.countryCode || "SA";
     const today = startOfDay(this.getClinicLocalDate(countryCode));
-    // 🚧 TIME_TRACE (Phase A)
-    console.log(`[TIME_TRACE] BookingService.getAvailableSlots: today=${today.toISOString()} serverTZ=${Intl.DateTimeFormat().resolvedOptions().timeZone} offset=${new Date().getTimezoneOffset()} now=${new Date().toISOString()}`);
-
     const monthsMapArabic = [
       "يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو",
       "يوليو", "أغسطس", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر"

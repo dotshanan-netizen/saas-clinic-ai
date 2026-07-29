@@ -50,6 +50,7 @@ export interface ExtractedBookingData {
   doctorName: string | null;
   branchName: string | null;
   timeSlot: string | null;
+  source?: string;
 }
 
 export interface ClinicWithCatalog {
@@ -265,11 +266,7 @@ export function validateBookingData(
 
   const branch = normalizeToOfficial(data.branchName, branchNames);
   const rawTimeSlot = sanitizeAIValue(data.timeSlot);
-  const timeSlot = TimeNormalizer.normalize(rawTimeSlot, previousTimeSlot, clinic.countryCode);
-  // 🚧 TIME_TRACE (Phase A) — logging time + server timezone context
-  console.log(`[TimeNormalizer] raw: '${rawTimeSlot}' -> normalized: '${timeSlot}'`);
-  console.log(`[TIME_TRACE] validateBookingData: serverTZ=${Intl.DateTimeFormat().resolvedOptions().timeZone} offset=${new Date().getTimezoneOffset()} raw="${rawTimeSlot}" previous="${previousTimeSlot}" result="${timeSlot}"`);
-
+  const timeSlot = TimeNormalizer.normalize(rawTimeSlot, previousTimeSlot, clinic.countryCode || "SA");
   const missingFields: string[] = [];
   let phoneRestricted = false;
 

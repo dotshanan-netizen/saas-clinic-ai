@@ -1,8 +1,19 @@
-import { test, expect } from "@playwright/test";
-import { PrismaClient } from "../src/generated/prisma";
 import { decrypt } from "../src/lib/encryption";
+import {
+  test,
+  expect,
+  InstrumentedPrisma,
+  dbSnapshot,
+  log,
+  getRunId,
+  writeLogs,
+  writeFailureArtifact,
+  resetLogs,
+  setFailureFlag,
+  isFailureOccurred,
+} from "./test-instrumentation";
 
-const prisma = new PrismaClient();
+const prisma = new InstrumentedPrisma();
 
 test.describe("Clinic Configuration Engine Integration Tests", () => {
   const clinicSlug = "rival-clinic";
@@ -12,21 +23,69 @@ test.describe("Clinic Configuration Engine Integration Tests", () => {
   let targetKbId: string;
 
   test.beforeAll(async () => {
-    // Clear dynamic items that might conflict
-    await prisma.workingHour.deleteMany({});
-    await prisma.doctorBranch.deleteMany({});
-    await prisma.doctorService.deleteMany({});
-    await prisma.doctor.deleteMany({});
-    await prisma.service.deleteMany({});
-    await prisma.branch.deleteMany({});
-    await prisma.knowledgeBase.deleteMany({});
+    log({ event: "suite_start", slug: clinicSlug, runId: getRunId() });
+    await dbSnapshot(prisma, "before_cleanup");
+
+    // Delete specifically created test entities to prevent ID/name conflicts
+    await prisma.workingHour.deleteMany({
+      where: {
+        branch: { name: "فرع النرجس الجديد" }
+      }
+    });
+    await prisma.doctorBranch.deleteMany({
+      where: {
+        OR: [
+          { branch: { name: "فرع النرجس الجديد" } },
+          { doctor: { name: "د. نجلاء" } }
+        ]
+      }
+    });
+    await prisma.doctorService.deleteMany({
+      where: {
+        OR: [
+          { service: { name: "خيوط شد الوجه" } },
+          { doctor: { name: "د. نجلاء" } }
+        ]
+      }
+    });
+    await prisma.doctor.deleteMany({
+      where: { name: "د. نجلاء" }
+    });
+    await prisma.service.deleteMany({
+      where: { name: "خيوط شد الوجه" }
+    });
+    await prisma.branch.deleteMany({
+      where: { name: "فرع النرجس الجديد" }
+    });
+    await prisma.knowledgeBase.deleteMany({
+      where: { content: { contains: "نتائج البوتكس" } }
+    });
+
+    await dbSnapshot(prisma, "after_cleanup");
   });
 
   test.afterAll(async () => {
+    await dbSnapshot(prisma, "suite_end");
+    const logPath = await writeLogs(`clinic-config-${getRunId()}`);
+    console.log(`📝 Instrumentation log: ${logPath}`);
     await prisma.$disconnect();
   });
 
-  test("1. Clinic Profile Config API - Encryption and Sanitization", async ({ request }) => {
+  test.beforeEach(async ({}, testInfo) => {
+    resetLogs();
+    log({ event: "test_start", title: testInfo.titlePath?.join(" > ") || "unknown" });
+    await dbSnapshot(prisma, `before_${testInfo.titlePath?.join("_")?.replace(/[^a-zA-Z0-9]/g, "_")?.substring(0, 40) || "unknown"}`);
+  });
+
+  test.afterEach(async ({}, testInfo) => {
+    const snapshotLabel = `after_${testInfo.titlePath?.join("_")?.replace(/[^a-zA-Z0-9]/g, "_")?.substring(0, 40) || "unknown"}`;
+    await dbSnapshot(prisma, snapshotLabel);
+    if (isFailureOccurred()) {
+      await writeFailureArtifact(testInfo.titlePath?.join(" > ") || "unknown");
+    }
+  });
+
+  test("1. Clinic Profile Config API - Encryption and Sanitization", async ({ loggedRequest: request }) => {
     // GET initial profile
     const getRes = await request.get(`/api/clinic/config?clinicSlug=${clinicSlug}`);
     expect(getRes.ok()).toBeTruthy();
@@ -70,7 +129,7 @@ test.describe("Clinic Configuration Engine Integration Tests", () => {
     expect(decrypted).toBe(testToken);
   });
 
-  test("2. Branch CRUD and Working Hours API", async ({ request }) => {
+  test("2. Branch CRUD and Working Hours API", async ({ loggedRequest: request }) => {
     // CREATE Branch
     const createRes = await request.post("/api/clinic/branches", {
       data: {
@@ -109,7 +168,7 @@ test.describe("Clinic Configuration Engine Integration Tests", () => {
     expect(workingHours.length).toBe(2);
 
     // GET Working Hours
-    const getHoursRes = await request.get(`/api/clinic/branches/working-hours?branchId=${targetBranchId}`);
+    const getHoursRes = await request.get(`/api/clinic/branches/working-hours?branchId=${targetBranchId}&t=${Date.now()}`);
     expect(getHoursRes.ok()).toBeTruthy();
     const hoursList = await getHoursRes.json();
     expect(
@@ -120,7 +179,7 @@ test.describe("Clinic Configuration Engine Integration Tests", () => {
     ).toBe(true);
   });
 
-  test("3. Service CRUD API", async ({ request }) => {
+  test("3. Service CRUD API", async ({ loggedRequest: request }) => {
     // CREATE Service
     const createRes = await request.post("/api/clinic/services", {
       data: {
@@ -144,7 +203,7 @@ test.describe("Clinic Configuration Engine Integration Tests", () => {
     expect(services.find((s: { id: string }) => s.id === targetServiceId)).toBeDefined();
   });
 
-  test("4. Doctor CRUD and Relation Mapping API", async ({ request }) => {
+  test("4. Doctor CRUD and Relation Mapping API", async ({ loggedRequest: request }) => {
     // CREATE Doctor with branch and service links
     const createRes = await request.post("/api/clinic/doctors", {
       data: {
@@ -161,7 +220,7 @@ test.describe("Clinic Configuration Engine Integration Tests", () => {
     targetDoctorId = doctor.id;
 
     // GET doctors with relations
-    const listRes = await request.get(`/api/clinic/doctors?clinicSlug=${clinicSlug}`);
+    const listRes = await request.get(`/api/clinic/doctors?clinicSlug=${clinicSlug}&t=${Date.now()}`);
     expect(listRes.ok()).toBeTruthy();
     const doctors = await listRes.json();
     interface DoctorTestItem {
@@ -177,7 +236,7 @@ test.describe("Clinic Configuration Engine Integration Tests", () => {
     expect(foundDoc.services[0].serviceId).toBe(targetServiceId);
   });
 
-  test("5. Knowledge Base CRUD API", async ({ request }) => {
+  test("5. Knowledge Base CRUD API", async ({ loggedRequest: request }) => {
     // CREATE FAQ
     const createRes = await request.post("/api/clinic/kb", {
       data: {
@@ -192,7 +251,7 @@ test.describe("Clinic Configuration Engine Integration Tests", () => {
     targetKbId = kb.id;
 
     // GET FAQs
-    const listRes = await request.get(`/api/clinic/kb?clinicSlug=${clinicSlug}`);
+    const listRes = await request.get(`/api/clinic/kb?clinicSlug=${clinicSlug}&t=${Date.now()}`);
     expect(listRes.ok()).toBeTruthy();
     const items = await listRes.json();
     expect(items.find((i: { id: string }) => i.id === targetKbId)).toBeDefined();

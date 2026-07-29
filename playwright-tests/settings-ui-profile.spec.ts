@@ -21,14 +21,14 @@ test.describe("Sprint 3A: Clinic Profile Frontend UI Tests", () => {
   test("should navigate to settings page, load profile, edit profile, and successfully save changes", async ({ page }) => {
     // 1. Go to reception dashboard
     await page.goto("/dashboard");
-    await expect(page.locator("h1")).toContainText("لوحة موظف الاستقبال");
+    await expect(page.locator("h1")).toContainText("Clinova AI");
 
     // 2. Click on "⚙️ إعدادات العيادة" navigation link
-    await page.click("text=⚙️ إعدادات العيادة");
+    await page.locator('a[href="/dashboard/settings"]').click();
     await page.waitForURL("**/dashboard/settings");
 
     // 3. Confirm Settings Page title is present
-    await expect(page.locator("h1")).toContainText("إعدادات المنصة والعيادة");
+    await expect(page.locator("h2")).toContainText("إعدادات العيادة والمنصة");
 
     // 4. Fill in new Clinic Name
     const newName = "عيادة ريفال للتجميل E2E";

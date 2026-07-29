@@ -24,8 +24,26 @@ test.describe("Reception Dashboard E2E Tests", () => {
         clientPhone: testPhone
       }
     });
+    await prisma.conversation.deleteMany({
+      where: {
+        clinicId: clinic.id,
+        clientPhone: testPhone
+      }
+    });
 
-    // 3. Seed fresh PENDING booking
+    // 3. Create a Conversation record so the dashboard can find this patient
+    await prisma.conversation.create({
+      data: {
+        clientPhone: testPhone,
+        clientName: "منى محمد",
+        messages: [],
+        clinicId: clinic.id,
+        humanTakeover: false,
+        currentStateName: "IDLE",
+      },
+    });
+
+    // 4. Seed fresh PENDING booking
     const booking = await prisma.booking.create({
       data: {
         clientName: "منى محمد",
@@ -41,7 +59,7 @@ test.describe("Reception Dashboard E2E Tests", () => {
     });
     bookingId = booking.id;
 
-    // 4. Navigate and select patient to reset UI state
+    // 5. Navigate and select patient to reset UI state
     await page.goto("/dashboard");
     await page.waitForLoadState("networkidle");
     await page.getByTestId(`patient-btn-${testPhone}`).click();
@@ -51,6 +69,9 @@ test.describe("Reception Dashboard E2E Tests", () => {
   // Run after each test to clean up
   test.afterEach(async () => {
     await prisma.booking.deleteMany({
+      where: { clientPhone: testPhone }
+    });
+    await prisma.conversation.deleteMany({
       where: { clientPhone: testPhone }
     });
   });

@@ -25,10 +25,10 @@ test.describe("Sprint 3B: Branches & Operating Hours Frontend UI Tests", () => {
   test("should navigate to settings, switch to branches tab, create branch, and edit working hours", async ({ page }) => {
     // 1. Go to reception dashboard
     await page.goto("/dashboard");
-    await expect(page.locator("h1")).toContainText("لوحة موظف الاستقبال");
+    await expect(page.locator("h1")).toContainText("Clinova AI");
 
     // 2. Go to Settings Page
-    await page.click("text=⚙️ إعدادات العيادة");
+    await page.locator('a[href="/dashboard/settings"]').click();
     await page.waitForURL("**/dashboard/settings");
 
     // 3. Switch to "الفروع وأوقات العمل" Tab

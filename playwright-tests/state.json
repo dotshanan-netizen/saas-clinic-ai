@@ -2,10 +2,10 @@
   "cookies": [
     {
       "name": "clinova_session",
-      "value": "eyJhbGciOiJIUzI1NiJ9.eyJ1c2VySWQiOiJjbXJ5b2VubWowMDAyZHpyY2QzMzJldGs1IiwiY2xpbmljSWQiOiJjbXJ5b2VuZHkwMDAwZHpyY3R5eGd5ZjNrIiwicm9sZSI6IkFETUlOIiwic2x1ZyI6InJpdmFsLWNsaW5pYyIsImlhdCI6MTc4NDkxNjk2OSwiZXhwIjoxNzg1MDAzMzY5fQ.vI3_ONzs46jfdqBptqFSa8a_xkW2diI6xr8VlJtDd-k",
+      "value": "eyJhbGciOiJIUzI1NiJ9.eyJ1c2VySWQiOiJjbXM0d2EwcDQwMDAyZHowd21zdXZtbm9uIiwiY2xpbmljSWQiOiJjbXM0d2EwZ3MwMDAwZHowdzFnbnc0ejg1Iiwicm9sZSI6IkFETUlOIiwic2x1ZyI6InJpdmFsLWNsaW5pYyIsImlhdCI6MTc4NTMxMjgyNywiZXhwIjoxNzg1Mzk5MjI3fQ.u--lVkstmJpD2Ejx4lhcLzZ8ibSbovPhB8FzkdA3zQ0",
       "domain": "localhost",
       "path": "/",
-      "expires": 1785003369.355,
+      "expires": 1785399227.755,
       "httpOnly": true,
       "secure": true,
       "sameSite": "Strict"

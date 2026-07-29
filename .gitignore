@@ -74,3 +74,13 @@ test-output.txt
 
 # Investigation scripts & tools (forensic, diagnostic — not production code)
 scripts/tools/
+
+# Dev logs and build info
+server.log
+vercel-logs.txt
+tsconfig.tsbuildinfo
+
+# Archived secrets (sensitive credentials backup — excluded from git tracking)
+_archive/secrets/
+
+

@@ -133,8 +133,6 @@ export class BusinessEngine {
     } else {
       extractedTime = !isUnset(aiResult.bookingData?.timeSlot) ? aiResult.bookingData!.timeSlot : currentState.timeSlot;
     }
-    // 🚧 TIME_TRACE (Phase A)
-    console.log(`[TIME_TRACE] BusinessEngine.extract: aiTime="${aiResult.bookingData?.timeSlot}" deterministicTime="${timeExtraction.normalizedTime}" extractedTime="${extractedTime}"`);
     // ───────────────────────────────────────────────────────────────────────────
 
     // ── ACTIVE BOOKING SESSION DETECTION ───────────────────────────────────────
@@ -390,9 +388,6 @@ export class BusinessEngine {
         }));
         let slotIsAvailable = false;
         
-        // 🚧 TIME_TRACE (Phase A)
-        console.log(`[TIME_TRACE] DoubleBookingGuard: cleanTimeSlot="${validation.cleanTimeSlot}" availableDays=${Object.keys(availableSlots).length}`);
-        
         for (const slots of Object.values(availableSlots)) {
           for (const slot of slots) {
             const timeOnly = validation.cleanTimeSlot?.match(/\d{2}:\d{2}\s+[صم]/)?.[0];
@@ -403,7 +398,6 @@ export class BusinessEngine {
             
             if (exactMatch || endMatch || includeMatch) {
               slotIsAvailable = true;
-              console.log(`[TIME_TRACE] SlotMatched: slot="${slot}" cleanTime="${validation.cleanTimeSlot}" timeOnly="${timeOnly}" exact=${exactMatch} end=${endMatch} include=${includeMatch}`);
               validation.cleanTimeSlot = slot;
               // ARCHITECTURAL RULE: Availability Check does NOT modify
               // Conversation Memory. modifiedBookingData is preserved

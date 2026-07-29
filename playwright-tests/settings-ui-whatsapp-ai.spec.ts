@@ -14,14 +14,14 @@ test.describe("Sprint 3F: WhatsApp & AI Settings Frontend UI Tests", () => {
   test("should navigate to settings, switch to whatsapp-ai tab, edit config, and verify encrypted DB state", async ({ page }) => {
     // 1. Go to reception dashboard
     await page.goto("/dashboard");
-    await expect(page.locator("h1")).toContainText("لوحة موظف الاستقبال");
+    await expect(page.locator("h1")).toContainText("Clinova AI");
 
     // 2. Go to Settings Page
-    await page.click("text=⚙️ إعدادات العيادة");
+    await page.locator('a[href="/dashboard/settings"]').click();
     await page.waitForURL("**/dashboard/settings");
 
-    // 3. Switch to "قنوات الاتصال والذكاء" Tab
-    await page.click("text=قنوات الاتصال والذكاء");
+    // 3. Switch to "إعدادات الواتساب والـ AI" Tab
+    await page.click("text=إعدادات الواتساب والـ AI");
 
     // 4. Fill configurations
     await page.fill("label:has-text('معرف رقم الهاتف') + input", "1234567890123");

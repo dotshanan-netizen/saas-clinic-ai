@@ -125,6 +125,7 @@ export class ConversationEngine {
     intent?: string;
     stage?: string;
     policy?: string;
+    conversationId?: string | null;
   }> {
     const redis = ConnectionManager.getRedisConnection("conversation-lock");
     const lockKey = `lock:conversation:${clinic.id}:${clientPhone}`;
@@ -151,7 +152,7 @@ export class ConversationEngine {
       // Prevents unnecessary AI calls (wasted tokens + latency) when message
       // is missing or whitespace-only.
       if (!message || message.trim().length === 0) {
-        Logger.warn(`[ConversationEngine] Empty message from ${clientPhone}, skipping AI call.`);
+        Logger.warn(`[ConversationEngine] Empty message from ${clientPhone}, skipping AI call.`, { requestId, clinicId: clinic.id, clientPhone });
         return {
           response: "",
           intent: "EmptyMessage",
@@ -190,7 +191,7 @@ export class ConversationEngine {
           timestamp: new Date().toISOString(),
           sessionReset: true
         });
-        Logger.info(`[ConversationEngine] Session timed out for ${clientPhone}, resetting state.`);
+        Logger.info(`[ConversationEngine] Session timed out for ${clientPhone}, resetting state.`, { requestId, clinicId: clinic.id, clientPhone });
         if (conversation) {
           conversation.bookingDraft = null;
           conversation.currentStateName = "IDLE";
@@ -602,7 +603,8 @@ export class ConversationEngine {
         bookingCreated: bookingCreated || bookingModified,
         intent: resolvedIntent,
         stage: resolvedStage,
-        policy: resolvedPolicy
+        policy: resolvedPolicy,
+        conversationId: conversation?.id ?? null,
       };
     } finally {
       if (acquired) {

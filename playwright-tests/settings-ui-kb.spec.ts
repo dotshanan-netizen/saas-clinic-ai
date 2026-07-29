@@ -20,14 +20,14 @@ test.describe("Sprint 3E: Knowledge Base RAG Frontend UI Tests", () => {
   test("should navigate to settings, switch to kb tab, create kb entry, verify in database, and delete it", async ({ page }) => {
     // 1. Go to reception dashboard
     await page.goto("/dashboard");
-    await expect(page.locator("h1")).toContainText("لوحة موظف الاستقبال");
+    await expect(page.locator("h1")).toContainText("Clinova AI");
 
-    // 2. Go to Settings Page
-    await page.click("text=⚙️ إعدادات العيادة");
-    await page.waitForURL("**/dashboard/settings");
+    // 2. Go to Knowledge Page
+    await page.locator('a[href="/dashboard/knowledge"]').click();
+    await page.waitForURL("**/dashboard/knowledge");
 
-    // 3. Switch to "قاعدة المعرفة RAG" Tab
-    await page.click("text=قاعدة المعرفة RAG");
+    // 3. Switch to "المستندات والسياسات" Tab
+    await page.click("text=المستندات والسياسات");
 
     // 4. Click "+ إضافة مستند معرفي"
     await page.click("text=إضافة مستند معرفي");
@@ -91,6 +91,6 @@ test.describe("Sprint 3E: Knowledge Base RAG Frontend UI Tests", () => {
     const deletedDbKb = await prisma.knowledgeBase.findUnique({
       where: { id: kbId },
     });
-    expect(deletedDbKb).toBeNull();
+    expect(deletedDbKb!.deletedAt).not.toBeNull();
   });
 });

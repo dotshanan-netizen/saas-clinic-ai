@@ -15,7 +15,9 @@
     "onboard": "npx tsx src/scripts/onboard-tenant.ts",
     "tenant:verify": "npx tsx src/scripts/verify-tenant.ts",
     "tunnel": "npx tsx src/scripts/start-tunnel.ts",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "bootstrap:whatsapp": "node scripts/bootstrap-whatsapp.mjs",
+    "verify:runtime": "node scripts/verify-runtime.mjs"
   },
   "dependencies": {
     "@google/genai": "^2.13.0",

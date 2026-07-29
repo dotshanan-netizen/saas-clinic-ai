@@ -25,14 +25,14 @@ test.describe("Sprint 3C: Services Catalog Frontend UI Tests", () => {
   test("should navigate to settings, switch to services tab, create service, and verify in database", async ({ page }) => {
     // 1. Go to reception dashboard
     await page.goto("/dashboard");
-    await expect(page.locator("h1")).toContainText("لوحة موظف الاستقبال");
+    await expect(page.locator("h1")).toContainText("Clinova AI");
 
-    // 2. Go to Settings Page
-    await page.click("text=⚙️ إعدادات العيادة");
-    await page.waitForURL("**/dashboard/settings");
+    // 2. Go to Knowledge Page
+    await page.locator('a[href="/dashboard/knowledge"]').click();
+    await page.waitForURL("**/dashboard/knowledge");
 
-    // 3. Switch to "الخدمات الطبية" Tab
-    await page.click("text=الخدمات الطبية");
+    // 3. Switch to "الخدمات والأسعار" Tab
+    await page.click("text=الخدمات والأسعار");
 
     // 4. Click "+ إضافة خدمة جديدة"
     await page.click("text=إضافة خدمة جديدة");

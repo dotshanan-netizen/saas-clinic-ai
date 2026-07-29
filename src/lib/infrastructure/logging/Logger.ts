@@ -75,6 +75,16 @@ export class Logger {
     console.log(JSON.stringify(payload));
   }
 
+  static warn(message: string, context: { requestId: string; clinicId: string; [key: string]: any }) {
+    const payload = {
+      timestamp: new Date().toISOString(),
+      level: "WARN",
+      message: Logger.maskText(message),
+      ...Logger.sanitizePayload(context),
+    };
+    console.log(JSON.stringify(payload));
+  }
+
   static error(message: string, error: any, context: { requestId: string; clinicId: string; [key: string]: any }) {
     const errObj = error instanceof Error 
       ? { message: error.message, stack: error.stack }

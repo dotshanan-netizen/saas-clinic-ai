@@ -21,12 +21,20 @@ async function main() {
   console.log("Database cleared.");
 
   // Create Clinic
+  // NOTE: whatsappToken is intentionally left null here.
+  // Run `npm run bootstrap:whatsapp` as a separate operational step
+  // to encrypt META_ACCESS_TOKEN and store it in the database.
   const clinic = await prisma.clinic.create({
     data: {
       name: "عيادة ريفال للتجميل",
       slug: "rival-clinic",
       countryCode: "SA",
       allowedCountries: "SA",
+      isAiActive: true,
+      whatsappPhoneId: "1183207968212546",
+      whatsappWabaId: "116568288035222",
+      whatsappVerifyToken: "RIVAL_CLINIC_VERIFY_TOKEN",
+      whatsappToken: null, // Set via: npm run bootstrap:whatsapp
       customPrompt: `أنتِ سارة، موظفة استقبال سعودية لبقة ومحترفة في "عيادة ريفال للتجميل".
 هدفِك هو تحويل الاستفسارات إلى حجوزات مؤكدة بجمع البيانات الخمسة بالتسلسل.
 نبرة صوتك: اللهجة البيضاء السعودية اللبقة والمحترمة (تستخدمين: حياك الله، يا هلا ومسهلا بكِ، يا قلبي، تسعدنا خدمتكِ).
