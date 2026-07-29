@@ -15,7 +15,9 @@ export async function middleware(request: NextRequest) {
         if (payload?.clinicId) {
           hasValidCookie = true;
         }
-      } catch (_) {}
+      } catch {
+        console.warn("[Middleware] Invalid session cookie — redirecting to login");
+      }
     }
     if (!hasValidCookie) {
       return NextResponse.redirect(new URL('/login', request.url));
